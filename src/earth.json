@@ -1,7 +1,7 @@
 {
   "env": [
     {
-      "HOUDINI_OTLSCAN_PATH": "$HOUDINI_PACKAGE_PATH/earth"
+      "HOUDINI_OTLSCAN_PATH": "$HOUDINI_PACKAGE_PATH/earth/otls"
     },
     {
       "PYTHONPATH": "$HOUDINI_PACKAGE_PATH/earth/python"

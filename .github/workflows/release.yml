@@ -17,8 +17,8 @@ jobs:
 
       - name: Build ZIP file
         run: |
-          mkdir -p build/earth/python
-          cp src/*.hda build/earth/
+          mkdir -p build/earth/python build/earth/otls
+          cp src/*.hda build/earth/otls
           cp src/*.json build/
           cp -r earth build/earth/python/earth
           find build -name __pycache__ -type d -prune -exec rm -rf {} +
