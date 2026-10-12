@@ -30,8 +30,8 @@ Build the runtime dependencies and symlink the sources so Houdini always loads
 the local files:
 
 ```sh
-uv pip install --target build/python dracopy pygltflib
 mkdir -p build/otls build/python
+uv pip install --target build/python dracopy pygltflib
 ln -sfn "$PWD"/src/*.hda build/otls/
 ln -sfn "$PWD"/earth build/python/earth
 ```

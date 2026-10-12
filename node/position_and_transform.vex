@@ -23,9 +23,7 @@ vector up    = cross(east, north);
 
 matrix transform = maketransform(east, up, center);
 
-//printf("north = %f\n", north);
-//printf("east = %f\n", east);
-//printf("up = %f\n", up);
-
 v@center = center;
+v@east = east;
+v@north = north;
 4@transform = transform;
