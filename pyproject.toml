@@ -1,0 +1,42 @@
+[project]
+name = "houdini-earth"
+version = "0.1.0"
+description = "Generate real-world meshes in SideFX Houdini using the Google Map Tiles and Elevation APIs."
+authors = [
+    { name = "Beat Reichenbach" }
+]
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit>=4.0",
+    "pytest>=8.0",
+    "python-semantic-release>=9.0",
+    "ruff>=0.16",
+    "ty>=0.0.82",
+    "types-houdini>=21.0",
+    "types-usd>=24.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.format]
+quote-style = "single"
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "ANN", "RUF"]
+ignore = ["SIM108"]
+
+[tool.ty.environment]
+python-version = "3.11"
