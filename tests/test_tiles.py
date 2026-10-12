@@ -6,7 +6,8 @@ from pytest import MonkeyPatch
 
 from earth import tiles as tiles_module
 from earth.cache import Cache
-from earth.tiles import TileLoader, _desired_error
+from earth.region import RadialRegion
+from earth.tiles import TileLoader
 
 
 class MockResponse:
@@ -51,23 +52,16 @@ def _install(monkeypatch: MonkeyPatch, root: dict) -> None:
     monkeypatch.setattr(tiles_module.requests, 'get', get)
 
 
-def test_desired_error_clamps() -> None:
-    assert _desired_error(0.0, 0.0, 100.0, 1.0, 50.0) == 1.0
-    assert _desired_error(100.0, 0.0, 100.0, 1.0, 50.0) == 50.0
-    assert _desired_error(500.0, 0.0, 100.0, 1.0, 50.0) == 50.0
-
-
 def test_collect_selects_and_downloads(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     _install(monkeypatch, _root(_leaf(0.0, 10.0, '/tile.glb?session=abc')))
     loader = TileLoader('key', Cache(tmp_path), cached=True)
+    region = RadialRegion(np.array([0.0, 0.0, 0.0]), radius=1000.0, falloff=1000.0)
     manifest = loader.collect(
-        np.array([0.0, 0.0, 0.0]),
+        region,
         min_error=1.0,
         max_error=1000.0,
-        min_dist=0.0,
-        max_dist=10000.0,
         max_meshes=10,
     )
     assert manifest.errors == [10.0]
@@ -75,17 +69,16 @@ def test_collect_selects_and_downloads(
     assert Path(manifest.meshes[0]).is_file()
 
 
-def test_collect_prunes_beyond_max_dist(
+def test_collect_prunes_beyond_falloff(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     _install(monkeypatch, _root(_leaf(0.0, 10.0, '/tile.glb?session=abc')))
     loader = TileLoader('key', Cache(tmp_path), cached=True)
+    region = RadialRegion(np.array([100000.0, 0.0, 0.0]), radius=10.0, falloff=10.0)
     manifest = loader.collect(
-        np.array([100000.0, 0.0, 0.0]),
+        region,
         min_error=1.0,
         max_error=1000.0,
-        min_dist=0.0,
-        max_dist=10.0,
         max_meshes=10,
     )
     assert manifest.meshes == []
@@ -102,12 +95,11 @@ def test_collect_sorts_nearest_first_and_applies_max_meshes(
         ),
     )
     loader = TileLoader('key', Cache(tmp_path), cached=True)
+    region = RadialRegion(np.array([0.0, 0.0, 0.0]), radius=0.0, falloff=10000.0)
     manifest = loader.collect(
-        np.array([0.0, 0.0, 0.0]),
+        region,
         min_error=1.0,
         max_error=1000.0,
-        min_dist=0.0,
-        max_dist=10000.0,
         max_meshes=1,
     )
     assert manifest.errors == [10.0]

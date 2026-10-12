@@ -6,10 +6,10 @@ import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-import numpy as np
 import requests
 
 from .cache import Cache
+from .region import Region
 from .tileset import Refine, Tile, parse_tile
 
 TILE_URL = 'https://tile.googleapis.com'
@@ -25,7 +25,7 @@ class TileSelection:
     uri: str
     error: float
     box: tuple[float, ...]
-    distance: float
+    blend: float
 
 
 @dataclass
@@ -35,22 +35,6 @@ class TileManifest:
     meshes: list[str] = field(default_factory=list)
     boxes: list[str] = field(default_factory=list)
     errors: list[float] = field(default_factory=list)
-
-
-def _desired_error(
-    distance: float,
-    min_dist: float,
-    max_dist: float,
-    min_error: float,
-    max_error: float,
-) -> float:
-    """Return the LOD error allowed at a distance from the center."""
-
-    if max_dist <= min_dist:
-        return min_error
-    t = (distance - min_dist) / (max_dist - min_dist)
-    desired = min_error + t * (max_error - min_error)
-    return min(max(desired, min_error), max_error)
 
 
 class TileLoader:
@@ -152,23 +136,19 @@ class TileLoader:
         self,
         tile: Tile,
         refine: Refine,
-        center: np.ndarray,
+        region: Region,
         min_error: float,
         max_error: float,
-        min_dist: float,
-        max_dist: float,
         selections: list[TileSelection],
     ) -> None:
-        """Collect the mesh tiles below a node that fall within max_dist."""
+        """Collect the mesh tiles below a node that fall within the region."""
 
-        distance = 0.0
-        if tile.bounding_volume is not None:
-            distance = tile.bounding_volume.signed_distance(center)
-            if distance > max_dist:
-                return
+        keep, blend = region.evaluate(tile.bounding_volume)
+        if not keep:
+            return
 
         active_refine = tile.refine or refine
-        desired = _desired_error(distance, min_dist, max_dist, min_error, max_error)
+        desired = min_error + blend * (max_error - min_error)
         selected = desired > tile.geometric_error or not tile.children
 
         if selected and tile.content_uri is not None:
@@ -179,40 +159,27 @@ class TileLoader:
                     self._visit(
                         parse_tile(external['root']),
                         active_refine,
-                        center,
+                        region,
                         min_error,
                         max_error,
-                        min_dist,
-                        max_dist,
                         selections,
                     )
             else:
                 box = tile.bounding_volume.box if tile.bounding_volume else ()
                 selections.append(
-                    TileSelection(tile.content_uri, tile.geometric_error, box, distance)
+                    TileSelection(tile.content_uri, tile.geometric_error, box, blend)
                 )
             if active_refine == Refine.REPLACE:
                 return
 
         for child in tile.children:
-            self._visit(
-                child,
-                active_refine,
-                center,
-                min_error,
-                max_error,
-                min_dist,
-                max_dist,
-                selections,
-            )
+            self._visit(child, active_refine, region, min_error, max_error, selections)
 
     def collect(
         self,
-        center: np.ndarray,
+        region: Region,
         min_error: float,
         max_error: float,
-        min_dist: float,
-        max_dist: float,
         max_meshes: int,
         refine: Refine = Refine.REPLACE,
     ) -> TileManifest:
@@ -224,14 +191,12 @@ class TileLoader:
         self._visit(
             parse_tile(root['root']),
             initial_refine,
-            center,
+            region,
             min_error,
             max_error,
-            min_dist,
-            max_dist,
             selections,
         )
-        selections.sort(key=lambda s: s.distance)
+        selections.sort(key=lambda selection: selection.blend)
         if max_meshes > 0:
             selections = selections[:max_meshes]
 

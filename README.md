@@ -61,16 +61,20 @@ Earth is installed as a Houdini Package.
 
 ## Usage
 
-Place the Earth Mesh node in your scene and set the **Google API Key**, a
+Place the **Earth Mesh** node in your scene and set the **Google API Key**, a
 **Cache Path** and the **Latitude** / **Longitude** of the area you want to
 capture.
 
-- **Min Error** / **Max Error** set the finest and coarsest level of detail.
-- **Min Dist** / **Max Dist** control where that detail falls off. Everything
-  within **Min Dist** is built at **Min Error**, everything at **Max Dist** at
-  **Max Error**, interpolated in between. Nothing beyond **Max Dist** is
+**Shape** selects the region that is built:
+
+- **Circle** (default): full detail within **Radius**, falling off to the
+  coarsest level over **Falloff**. Nothing beyond **Radius** + **Falloff** is
   downloaded.
-- **Max Meshes** limits the number of downloaded tiles.
+- **Rectangle**: full detail within **Width** x **Height**, aligned to the local
+  east/north axes, falling off outward over **Falloff**.
+
+- **Min Error** / **Max Error** set the finest and coarsest level of detail.
+- **Max Meshes** limits the number of downloaded tiles, nearest first.
 - **Clear Cache** removes the downloaded tiles from the cache path.
 
 ## About this Repository

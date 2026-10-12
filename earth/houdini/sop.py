@@ -10,6 +10,7 @@ import numpy as np
 
 from .. import glb
 from ..cache import Cache
+from ..region import RadialRegion, RectangularRegion, Region
 from ..tiles import Progress, TileLoader
 from . import geometry
 
@@ -62,6 +63,22 @@ def _bool(node: hou.Node, name: str, default: bool) -> bool:
     return bool(parm.eval()) if parm is not None else default
 
 
+def _menu(node: hou.Node, name: str, default: str) -> str:
+    """Return a menu parameter evaluated as its token."""
+
+    parm = _param(node, name)
+    return parm.evalAsString() if parm is not None else default
+
+
+def _detail_vector(geo: hou.Geometry, name: str) -> np.ndarray:
+    """Return a detail attribute evaluated as a 3-vector."""
+
+    attrib = geo.findGlobalAttrib(name)
+    assert attrib is not None, f'missing detail attribute {name!r}'
+    value = cast(tuple[float, ...], geo.attribValue(attrib))
+    return np.array(value[:3])
+
+
 def _progress(operation: hou.InterruptableOperation) -> Progress:
     """Return a progress callback that updates an interruptable operation."""
 
@@ -85,10 +102,24 @@ def tiles(kwargs: dict[str, Any]) -> None:
     geo = node.geometry()
     assert geo is not None
 
-    center_attrib = geo.findGlobalAttrib('center')
-    assert center_attrib is not None
-    center_value = cast(tuple[float, ...], geo.attribValue(center_attrib))
-    center = np.array(center_value[:3])
+    center = _detail_vector(geo, 'center')
+    falloff = _float(node, 'falloff', 100.0)
+    region: Region
+    if _menu(node, 'shape', 'circle') == 'rectangle':
+        region = RectangularRegion(
+            center=center,
+            east=_detail_vector(geo, 'east'),
+            north=_detail_vector(geo, 'north'),
+            width=_float(node, 'width', 200.0),
+            height=_float(node, 'height', 100.0),
+            falloff=falloff,
+        )
+    else:
+        region = RadialRegion(
+            center=center,
+            radius=_float(node, 'radius', 500.0),
+            falloff=falloff,
+        )
 
     loader = TileLoader(
         api_key=_str(node, 'google_api_key', ''),
@@ -103,11 +134,9 @@ def tiles(kwargs: dict[str, Any]) -> None:
     ) as operation:
         loader.progress = _progress(operation)
         manifest = loader.collect(
-            center,
+            region,
             min_error=_float(node, 'min_error', 100.0),
             max_error=_float(node, 'max_error', 60000.0),
-            min_dist=_float(node, 'min_dist', 0.0),
-            max_dist=_float(node, 'max_dist', 2000.0),
             max_meshes=_int(node, 'max_meshes', 1000),
         )
 
