@@ -1,0 +1,2 @@
+@latitude = chf("latitude");
+@longitude = chf("longitude");

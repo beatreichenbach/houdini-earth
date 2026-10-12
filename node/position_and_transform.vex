@@ -1,0 +1,31 @@
+vector wgs84_to_cartesian(float latitude, longitude, altitude)
+{
+    float a = 6378137.0;                        // radius a of earth in meters cfr WGS84
+    float b = 6356752.3;                        // radius b of earth in meters cfr WGS84
+    float e2 = 1.0 - ( (b * b) / (a * a) );
+    float latr = radians(latitude);             // latitude in radians
+    float lonr = radians(-longitude);           // longitude in radians
+    float Nphi = a / sqrt(1-e2 * sin(latr) * sin(latr));
+    float x = (Nphi + altitude) * cos(latr) * cos(lonr);
+    float y = (b * b / (a * a) * Nphi + altitude) * sin(latr);
+    float z = (Nphi + altitude) * cos(latr) * sin(lonr);
+    return set(x,y,z);
+}
+
+float latitude  = detail(geoself(), "latitude");
+float longitude = detail(geoself(), "longitude");
+
+vector center = wgs84_to_cartesian(latitude, longitude, 0.0);
+float eps = 0.01;
+vector north = normalize(wgs84_to_cartesian(latitude + eps, longitude, 0.0) - wgs84_to_cartesian(latitude - eps, longitude, 0.0));
+vector east  = normalize(wgs84_to_cartesian(latitude, longitude + eps, 0.0) - wgs84_to_cartesian(latitude, longitude - eps, 0.0));
+vector up    = cross(east, north);
+
+matrix transform = maketransform(east, up, center);
+
+//printf("north = %f\n", north);
+//printf("east = %f\n", east);
+//printf("up = %f\n", up);
+
+v@center = center;
+4@transform = transform;

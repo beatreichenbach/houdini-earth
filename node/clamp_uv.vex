@@ -1,0 +1,13 @@
+string texturePath = prim(geoself(), "texture", @primnum);
+
+// Get texture size
+vector resolution;
+teximport(texturePath, "texture:resolution", resolution);
+
+int points[] = primpoints(geoself(), @primnum);
+foreach(int point; points)
+{
+    vector2 uv = point(geoself(), "uv", point);
+    uv = clamp(uv, set(0.5 / resolution.x, 0.5 / resolution.y), set(1.0 - 0.5 / resolution.x, 1.0 - 0.5 / resolution.y));
+    setpointattrib(geoself(), "uv", point, uv);
+}
