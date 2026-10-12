@@ -1,3 +1,0 @@
-matrix transform = detail(geoself(), "transform");
-matrix invert = invert(transform);
-@P = @P * invert;

@@ -3,80 +3,17 @@
 from __future__ import annotations
 
 import os
-from typing import Any, cast
+from collections.abc import Sequence
+from typing import cast
 
 import hou
-import numpy as np
 
 from .. import glb
 from ..cache import Cache
-from ..region import RadialRegion, RectangularRegion, Region
-from ..tiles import Progress, TileLoader
+from ..geodesy import tangent_frame
+from ..region import RadialRegion, RectangularRegion
+from ..tiles import Progress, TileLoader, TileResult
 from . import geometry
-
-
-def _node(kwargs: dict[str, Any]) -> hou.SopNode:
-    """Return the Python SOP running this code."""
-
-    node = kwargs.get('node')
-    return cast(hou.SopNode, node if node is not None else hou.pwd())
-
-
-def _param(node: hou.Node, name: str) -> hou.Parm | None:
-    """Return a parameter by name, searching the node and its parents."""
-
-    current: hou.Node | None = node
-    while current is not None:
-        op = cast(hou.OpNode, current)
-        parm = op.parm(name)
-        if parm is not None:
-            return parm
-        current = op.parent()
-    return None
-
-
-def _float(node: hou.Node, name: str, default: float) -> float:
-    """Return a parameter evaluated as a float."""
-
-    parm = _param(node, name)
-    return float(parm.eval()) if parm is not None else default
-
-
-def _int(node: hou.Node, name: str, default: int) -> int:
-    """Return a parameter evaluated as an int."""
-
-    parm = _param(node, name)
-    return int(parm.eval()) if parm is not None else default
-
-
-def _str(node: hou.Node, name: str, default: str) -> str:
-    """Return a parameter evaluated as a string."""
-
-    parm = _param(node, name)
-    return str(parm.eval()) if parm is not None else default
-
-
-def _bool(node: hou.Node, name: str, default: bool) -> bool:
-    """Return a parameter evaluated as a bool."""
-
-    parm = _param(node, name)
-    return bool(parm.eval()) if parm is not None else default
-
-
-def _menu(node: hou.Node, name: str, default: str) -> str:
-    """Return a menu parameter evaluated as its token."""
-
-    parm = _param(node, name)
-    return parm.evalAsString() if parm is not None else default
-
-
-def _detail_vector(geo: hou.Geometry, name: str) -> np.ndarray:
-    """Return a detail attribute evaluated as a 3-vector."""
-
-    attrib = geo.findGlobalAttrib(name)
-    assert attrib is not None, f'missing detail attribute {name!r}'
-    value = cast(tuple[float, ...], geo.attribValue(attrib))
-    return np.array(value[:3])
 
 
 def _progress(operation: hou.InterruptableOperation) -> Progress:
@@ -88,44 +25,91 @@ def _progress(operation: hou.InterruptableOperation) -> Progress:
     return update
 
 
-def _set_string_list(geo: hou.Geometry, name: str, values: list[str]) -> None:
-    """Store a string list on a detail attribute."""
+def _warn(node: hou.SopNode, issues: Sequence[str], subject: str) -> None:
+    """Report a single warning summarizing the issues."""
 
-    geo.addAttrib(hou.attribType.Global, name, [''])
-    geo.setGlobalAttribValue(name, values)
+    if not issues:
+        return
+    shown = '; '.join(issues[:5])
+    more = len(issues) - 5
+    suffix = f' (+{more} more)' if more > 0 else ''
+    node.warning(  # ty: ignore[unresolved-attribute]
+        f'{len(issues)} {subject}: {shown}{suffix}'
+    )
 
 
-def tiles(kwargs: dict[str, Any]) -> None:
+def _create_tile_points(geo: hou.Geometry, tiles: Sequence[TileResult]) -> None:
+    """Create one point per tile carrying its mesh path and geometric error."""
+
+    geo.addAttrib(hou.attribType.Point, 'mesh', '')
+    geo.addAttrib(hou.attribType.Point, 'error', 0.0)
+
+    geo.createPoints([(0.0, 0.0, 0.0)] * len(tiles))
+    geo.setPointStringAttribValues('mesh', [tile.mesh for tile in tiles])
+    geo.setPointFloatAttribValues('error', [tile.error for tile in tiles])
+
+
+def _consume_tile_points(geo: hou.Geometry) -> None:
+    """Remove the tile marker points and attributes, keeping detail attributes."""
+
+    for name in ('mesh', 'error'):
+        attrib = geo.findPointAttrib(name)
+        if attrib is not None:
+            attrib.destroy()
+    geo.deletePoints(geo.points())
+
+
+def tiles() -> None:
     """Download and select the 3D Tiles for the node's location."""
 
-    node = _node(kwargs)
-    geo = node.geometry()
-    assert geo is not None
+    node = cast(hou.SopNode, hou.pwd())
 
-    center = _detail_vector(geo, 'center')
-    falloff = _float(node, 'falloff', 100.0)
-    region: Region
-    if _menu(node, 'shape', 'circle') == 'rectangle':
+    geo = node.geometry()
+    if geo is None:
+        return
+
+    parm = cast(hou.Parm, node.parm('latitude'))
+    latitude = parm.evalAsFloat()
+    parm = cast(hou.Parm, node.parm('longitude'))
+    longitude = parm.evalAsFloat()
+    parm = cast(hou.Parm, node.parm('falloff'))
+    falloff = parm.evalAsFloat()
+
+    shape = node.evalParm('shape')
+    frame = tangent_frame(latitude, longitude)
+
+    parm = cast(hou.Parm, node.parm('width'))
+    width = parm.evalAsFloat()
+    parm = cast(hou.Parm, node.parm('height'))
+    height = parm.evalAsFloat()
+    parm = cast(hou.Parm, node.parm('radius'))
+    radius = parm.evalAsFloat()
+
+    parm = cast(hou.Parm, node.parm('google_api_key'))
+    google_api_key = parm.evalAsString()
+    parm = cast(hou.Parm, node.parm('cachedir'))
+    cachedir = parm.evalAsString()
+
+    if shape == 'rectangle':
         region = RectangularRegion(
-            center=center,
-            east=_detail_vector(geo, 'east'),
-            north=_detail_vector(geo, 'north'),
-            width=_float(node, 'width', 200.0),
-            height=_float(node, 'height', 100.0),
+            center=frame.center,
+            east=frame.east,
+            north=frame.north,
+            width=width,
+            height=height,
             falloff=falloff,
         )
     else:
-        region = RadialRegion(
-            center=center,
-            radius=_float(node, 'radius', 500.0),
-            falloff=falloff,
-        )
+        region = RadialRegion(center=frame.center, radius=radius, falloff=falloff)
 
-    loader = TileLoader(
-        api_key=_str(node, 'google_api_key', ''),
-        cache=Cache(_str(node, 'file_cache_path', '')),
-        cached=_bool(node, 'cached', True),
-    )
+    loader = TileLoader(api_key=google_api_key, cache=Cache(cachedir))
+
+    parm = cast(hou.Parm, node.parm('min_error'))
+    min_error = parm.evalAsFloat()
+    parm = cast(hou.Parm, node.parm('max_error'))
+    max_error = parm.evalAsFloat()
+    parm = cast(hou.Parm, node.parm('max_meshes'))
+    max_meshes = parm.evalAsInt()
 
     with hou.InterruptableOperation(  # ty: ignore[invalid-context-manager]
         'Get geometry with Google API',
@@ -134,27 +118,32 @@ def tiles(kwargs: dict[str, Any]) -> None:
     ) as operation:
         loader.progress = _progress(operation)
         manifest = loader.collect(
-            region,
-            min_error=_float(node, 'min_error', 100.0),
-            max_error=_float(node, 'max_error', 60000.0),
-            max_meshes=_int(node, 'max_meshes', 1000),
+            region=region,
+            min_error=min_error,
+            max_error=max_error,
+            max_meshes=max_meshes,
         )
 
-    _set_string_list(geo, 'meshes', manifest.meshes)
-    _set_string_list(geo, 'boxes', manifest.boxes)
-    _set_string_list(geo, 'errors', [str(error) for error in manifest.errors])
+    # Store the local tangent transform for the optional Transform By Attribute node.
+    geo.addAttrib(hou.attribType.Global, 'xform', (0.0,) * 16)
+    geo.setGlobalAttribValue('xform', frame.transform.flatten().tolist())
+
+    _create_tile_points(geo, manifest.tiles)
+    _warn(node, manifest.warnings, 'tile request(s) failed')
 
 
-def build(kwargs: dict[str, Any]) -> None:
+def build() -> None:
     """Assemble the downloaded GLB tiles into Houdini geometry."""
 
-    node = _node(kwargs)
+    node = cast(hou.SopNode, hou.pwd())
     geo = node.geometry()
     assert geo is not None
-    meshes = geo.stringListAttribValue('meshes')
-    errors = [float(value) for value in geo.stringListAttribValue('errors')]
 
-    chunks: list[tuple[glb.Chunk, float]] = []
+    meshes = [point.stringAttribValue('mesh') for point in geo.points()]
+    _consume_tile_points(geo)
+
+    chunks: list[glb.Chunk] = []
+    problems: list[str] = []
     with hou.InterruptableOperation(  # ty: ignore[invalid-context-manager]
         'Assembling GLTF',
         long_operation_name='Loading meshes',
@@ -163,22 +152,26 @@ def build(kwargs: dict[str, Any]) -> None:
         total = len(meshes)
         for index, path in enumerate(meshes):
             if not os.path.isfile(path):
-                print(f'File {path} not found')
+                problems.append(f'{path} not found')
                 continue
-            chunk = glb.load_chunk(path)
-            error = errors[index] if index < len(errors) else 0.0
-            chunks.append((chunk, error))
+            try:
+                chunk = glb.load_chunk(path)
+            except glb.GlbError as error:
+                problems.append(str(error))
+                continue
+            chunks.append(chunk)
             operation.updateLongProgress(
                 (index + 1) / total, f'Loading mesh {index + 1}/{total}'
             )
         geometry.build_geometry(geo, chunks)
 
-    attr = geo.addAttrib(hou.attribType.Global, 'copyright', '')
-    geo.setGlobalAttribValue(attr, geometry.copyright_string(chunks))
+    _warn(node, problems, 'mesh(es) could not be loaded')
 
 
-def clear_cache(kwargs: dict[str, Any]) -> None:
+def clear_cache() -> None:
     """Delete the downloaded tiles from the cache."""
 
-    node = _node(kwargs)
-    Cache(_str(node, 'file_cache_path', '')).clear()
+    node = cast(hou.SopNode, hou.pwd())
+    parm = cast(hou.Parm, node.parm('cachedir'))
+    cachedir = parm.evalAsString()
+    Cache(cachedir).clear()

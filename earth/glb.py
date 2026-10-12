@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import struct
 from dataclasses import dataclass, field
 
 import DracoPy  # ty: ignore[unresolved-import]
@@ -28,6 +29,21 @@ _NUM_COMPONENTS = {
     GLTF2.MAT4: 16,
 }
 
+_GLB_ERRORS = (
+    OSError,
+    ValueError,
+    RuntimeError,
+    KeyError,
+    IndexError,
+    TypeError,
+    struct.error,
+    AssertionError,
+)
+
+
+class GlbError(RuntimeError):
+    """A GLB tile could not be decoded."""
+
 
 @dataclass
 class Primitive:
@@ -44,21 +60,6 @@ class Chunk:
     """A decoded GLB tile."""
 
     primitives: list[Primitive] = field(default_factory=list)
-    copyright: str = ''
-
-
-def _texture_path(glb_path: str, index: int) -> str:
-    """Return the texture file path for a GLB image index."""
-
-    name = os.path.splitext(glb_path)[0]
-    return f'{name}_{index}.jpg'
-
-
-def _write_bytes(path: str, data: bytes) -> None:
-    """Write bytes to a file."""
-
-    with open(path, 'wb') as file:
-        file.write(data)
 
 
 def _read_accessor(gltf: GLTF2.GLTF2, index: int) -> np.ndarray:
@@ -94,16 +95,18 @@ def _read_accessor(gltf: GLTF2.GLTF2, index: int) -> np.ndarray:
 def _extract_textures(gltf: GLTF2.GLTF2, glb_path: str) -> list[str]:
     """Write the GLB's texture images next to it and return their paths."""
 
+    name = os.path.splitext(glb_path)[0]
     paths = []
     for index in range(len(gltf.images)):
-        path = _texture_path(glb_path, index)
+        path = f'{name}_{index}.jpg'
         buffer_view_index = gltf.images[index].bufferView
         if not os.path.isfile(path) and buffer_view_index is not None:
             buffer_view = gltf.bufferViews[buffer_view_index]
             buffer = gltf.buffers[buffer_view.buffer]
             data = gltf.get_data_from_buffer_uri(buffer.uri)
             offset = buffer_view.byteOffset or 0
-            _write_bytes(path, data[offset : offset + buffer_view.byteLength])
+            with open(path, 'wb') as file:
+                file.write(data[offset : offset + buffer_view.byteLength])
         paths.append(path)
     return paths
 
@@ -125,21 +128,6 @@ def _primitive_texture(
     if index < len(textures):
         return textures[index]
     return None
-
-
-def _node_matrix(gltf: GLTF2.GLTF2) -> np.ndarray:
-    """Return the first node's transform matrix."""
-
-    if not gltf.nodes or gltf.nodes[0].matrix is None:
-        return np.eye(4)
-    return np.array(gltf.nodes[0].matrix).reshape(4, 4)
-
-
-def _transform(points: np.ndarray, matrix: np.ndarray) -> np.ndarray:
-    """Return the points transformed by a matrix."""
-
-    homogeneous = np.hstack([points, np.ones((points.shape[0], 1))])
-    return (homogeneous @ matrix)[:, :3]
 
 
 def _read_draco(
@@ -165,44 +153,55 @@ def _read_primitive(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return points, faces and UVs for a GLB primitive."""
 
-    matrix = _node_matrix(gltf)
-
     if primitive.extensions and 'KHR_draco_mesh_compression' in primitive.extensions:
         points, faces, uvs = _read_draco(gltf, primitive)
-        return _transform(points, matrix), faces, uvs
-
-    position = primitive.attributes.POSITION
-    assert position is not None
-    points = _read_accessor(gltf, position).astype(np.float64)
-
-    texcoord = getattr(primitive.attributes, 'TEXCOORD_0', None)
-    if texcoord is not None:
-        uvs = _read_accessor(gltf, texcoord).astype(np.float64)
     else:
-        uvs = np.zeros((points.shape[0], 2), dtype=np.float64)
+        position = primitive.attributes.POSITION
+        assert position is not None
+        points = _read_accessor(gltf, position).astype(np.float64)
 
-    if primitive.indices is not None:
-        indices = _read_accessor(gltf, primitive.indices).reshape(-1).astype(np.int64)
-    else:
-        indices = np.arange(points.shape[0], dtype=np.int64)
+        texcoord = getattr(primitive.attributes, 'TEXCOORD_0', None)
+        if texcoord is not None:
+            uvs = _read_accessor(gltf, texcoord).astype(np.float64)
+        else:
+            uvs = np.zeros((points.shape[0], 2), dtype=np.float64)
 
-    triangle_count = len(indices) // 3
-    faces = indices[: triangle_count * 3].reshape((triangle_count, 3))
-    return _transform(points, matrix), faces, uvs
+        if primitive.indices is not None:
+            indices = (
+                _read_accessor(gltf, primitive.indices).reshape(-1).astype(np.int64)
+            )
+        else:
+            indices = np.arange(points.shape[0], dtype=np.int64)
+
+        triangle_count = len(indices) // 3
+        faces = indices[: triangle_count * 3].reshape((triangle_count, 3))
+
+    # Transform the points by the first node's matrix.
+    matrix = np.eye(4)
+    if gltf.nodes and gltf.nodes[0].matrix is not None:
+        matrix = np.array(gltf.nodes[0].matrix).reshape(4, 4)
+    homogeneous = np.hstack([points, np.ones((points.shape[0], 1))])
+    return (homogeneous @ matrix)[:, :3], faces, uvs
 
 
 def load_chunk(glb_path: str) -> Chunk:
-    """Return the decoded chunk for a GLB file."""
+    """
+    Return the decoded chunk for a GLB file.
 
-    gltf = GLTF2.GLTF2().load(glb_path)
-    textures = _extract_textures(gltf, glb_path)
-    copyright_text = (gltf.asset.copyright or '') if gltf.asset else ''
+    :raises GlbError: if the tile cannot be read or decoded.
+    """
 
-    chunk = Chunk(copyright=copyright_text)
-    mesh = gltf.meshes[0]
-    for index, primitive in enumerate(mesh.primitives):
-        points, faces, uvs = _read_primitive(gltf, primitive)
-        uvs = uvs * np.array((1.0, -1.0)) + np.array((0.0, 1.0))
-        texture = _primitive_texture(gltf, primitive, textures, index)
-        chunk.primitives.append(Primitive(points, faces, uvs, texture))
-    return chunk
+    try:
+        gltf = GLTF2.GLTF2().load(glb_path)
+        textures = _extract_textures(gltf, glb_path)
+
+        chunk = Chunk()
+        mesh = gltf.meshes[0]
+        for index, primitive in enumerate(mesh.primitives):
+            points, faces, uvs = _read_primitive(gltf, primitive)
+            uvs = uvs * np.array((1.0, -1.0)) + np.array((0.0, 1.0))
+            texture = _primitive_texture(gltf, primitive, textures, index)
+            chunk.primitives.append(Primitive(points, faces, uvs, texture))
+        return chunk
+    except _GLB_ERRORS as error:
+        raise GlbError(f'Could not decode {glb_path}: {error}') from error

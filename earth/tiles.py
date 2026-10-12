@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import requests
 
@@ -24,17 +25,23 @@ class TileSelection:
 
     uri: str
     error: float
-    box: tuple[float, ...]
     blend: float
 
 
 @dataclass
-class TileManifest:
-    """The mesh, bounding box and error lists produced by a selection."""
+class TileResult:
+    """A downloaded mesh with its geometric error."""
 
-    meshes: list[str] = field(default_factory=list)
-    boxes: list[str] = field(default_factory=list)
-    errors: list[float] = field(default_factory=list)
+    mesh: str
+    error: float
+
+
+@dataclass
+class TileManifest:
+    """The tiles produced by a selection."""
+
+    tiles: list[TileResult] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 class TileLoader:
@@ -44,35 +51,43 @@ class TileLoader:
         self,
         api_key: str,
         cache: Cache,
-        cached: bool = True,
         timeout: float = 30.0,
         progress: Progress | None = None,
     ) -> None:
         self.api_key = api_key
         self.cache = cache
-        self.cached = cached
         self.timeout = timeout
         self.progress = progress
         self.context = ''
+        self.warnings: list[str] = []
 
     def _content_url(self, uri: str, context: str | None = None) -> str:
         """Return the absolute URL for a tileset content URI."""
 
         context = self.context if context is None else context
-        return f'{TILE_URL}{uri}?{context}&key={self.api_key}'
+        parts = urlsplit(f'{TILE_URL}{uri}')
+        params = dict(parse_qsl(parts.query))
+        for name, value in parse_qsl(context):
+            params.setdefault(name, value)
+        params['key'] = self.api_key
+        return urlunsplit(
+            (parts.scheme, parts.netloc, parts.path, urlencode(params), parts.fragment)
+        )
 
-    def _download(self, url: str, cached: bool) -> bytes | None:
+    def _download(self, url: str) -> bytes | None:
         """Return the bytes for a URL, reading and writing the cache."""
 
-        if cached:
-            data = self.cache.read(url)
-            if data is not None:
-                return data
+        data = self.cache.read(url)
+        if data is not None:
+            return data
+        if self.progress is not None:
+            # Poll for interruption without showing progress.
+            self.progress(-1.0, 'Fetching tiles')
         try:
             response = requests.get(url, timeout=self.timeout)
             response.raise_for_status()
         except requests.RequestException as error:
-            print(f'Request error for {url}: {error}')
+            self.warnings.append(f'Request error for {url}: {error}')
             return None
         self.cache.write(url, response.content)
         return response.content
@@ -113,7 +128,7 @@ class TileLoader:
         """Return the root tileset JSON, using the cache when possible."""
 
         root_file = self.cache.path / 'root.json'
-        if self.cached and root_file.is_file():
+        if root_file.is_file():
             cached_root = json.loads(root_file.read_text())
             context = self._extract_context(cached_root['root'])
             if context:
@@ -123,7 +138,7 @@ class TileLoader:
                     return cached_root
             self.cache.clear()
 
-        data = self._download(f'{TILE_URL}{ROOT_URI}?key={self.api_key}', False)
+        data = self._download(f'{TILE_URL}{ROOT_URI}?key={self.api_key}')
         if data is None:
             raise RuntimeError('Could not fetch the 3D Tiles root.')
         root = json.loads(data)
@@ -153,7 +168,7 @@ class TileLoader:
 
         if selected and tile.content_uri is not None:
             if tile.is_external_tileset:
-                data = self._download(self._content_url(tile.content_uri), self.cached)
+                data = self._download(self._content_url(tile.content_uri))
                 if data is not None:
                     external = json.loads(data)
                     self._visit(
@@ -165,9 +180,8 @@ class TileLoader:
                         selections,
                     )
             else:
-                box = tile.bounding_volume.box if tile.bounding_volume else ()
                 selections.append(
-                    TileSelection(tile.content_uri, tile.geometric_error, box, blend)
+                    TileSelection(tile.content_uri, tile.geometric_error, blend)
                 )
             if active_refine == Refine.REPLACE:
                 return
@@ -204,15 +218,19 @@ class TileLoader:
         total = len(selections)
         for index, selection in enumerate(selections):
             url = self._content_url(selection.uri)
-            if self._download(url, self.cached) is None:
+            if self._download(url) is None:
                 continue
-            manifest.meshes.append(str(self.cache.file(url)))
-            manifest.boxes.append(','.join(str(x) for x in selection.box))
-            manifest.errors.append(selection.error)
+            manifest.tiles.append(
+                TileResult(
+                    mesh=str(self.cache.file(url)),
+                    error=selection.error,
+                )
+            )
             if self.progress is not None:
                 self.progress(
                     (index + 1) / total, f'Downloading mesh {index + 1}/{total}'
                 )
+        manifest.warnings = list(self.warnings)
         return manifest
 
     def clear(self) -> None:
