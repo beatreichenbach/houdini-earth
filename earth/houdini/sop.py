@@ -170,11 +170,12 @@ def build_atlas() -> None:
         return
 
     # Parameters
-    resolution = cast(hou.Parm, parent.parm('resolution')).evalAsInt()
+    resolution_string = cast(hou.Parm, parent.parm('resolution')).eval()
     padding = cast(hou.Parm, parent.parm('padding')).evalAsInt()
     directory = cast(hou.Parm, parent.parm('dir')).evalAsString()
     prefix = cast(hou.Parm, parent.parm('prefix')).evalAsString()
     extension = cast(hou.Parm, parent.parm('ext')).evalAsString()
+    resolution = int(resolution_string)
 
     logger.debug(
         'Atlas: resolution=%s padding=%s directory=%s prefix=%s extension=%s',

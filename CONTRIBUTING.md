@@ -7,16 +7,16 @@ To get started:
 ```sh
 uv venv --python 3.11
 uv sync --extra dev
-pre-commit install
+uv run pre-commit install
 ```
 
 Run the checks:
 
 ```sh
-ruff format .
-ruff check --fix .
-ty check
-pytest
+uv run ruff format .
+uv run ruff check --fix .
+uv run ty check
+uv run pytest
 ```
 
 ## Built-in Packages
@@ -44,5 +44,5 @@ Point Houdini at the package by adding `build/` to `HOUDINI_PACKAGE_DIR`:
 Releases are published with [python-semantic-release](https://python-semantic-release.readthedocs.io):
 
 ```sh
-semantic-release version && semantic-release publish
+uv run semantic-release version && uv run semantic-release publish
 ```

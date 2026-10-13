@@ -1,0 +1,20 @@
+// Remove the thin "skirt" triangles Google adds along tile edges to hide seams.
+
+float threshold = chf("threshold");
+
+int vertices[] = primvertices(0, @primnum);
+vector2 uvs[];
+foreach (int vertex; vertices) {
+    vector2 uv = vertex(0, "uv", vertex);
+    append(uvs, clamp(uv, {0.0, 0.0}, {1.0, 1.0}));
+}
+
+float min_edge = min(
+    distance(uvs[0], uvs[1]),
+    distance(uvs[1], uvs[2]),
+    distance(uvs[2], uvs[0])
+);
+
+if (min_edge < threshold) {
+    removeprim(0, @primnum, 1);
+}

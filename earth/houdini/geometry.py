@@ -33,7 +33,7 @@ def build_chunk(
     for index, chunk in enumerate(chunks):
         for primitive in chunk.primitives:
             points.append(primitive.points)
-            uvs.append(primitive.uvs)
+            uvs.append(primitive.uvs[primitive.faces])
             faces.extend((primitive.faces + offset).tolist())
             textures.extend([primitive.texture] * len(primitive.faces))
 
@@ -48,15 +48,15 @@ def build_chunk(
         return
 
     # Create geometry
-    uvs_2d = np.concatenate(uvs, axis=0)
+    uvs_2d = np.concatenate(uvs, axis=0).reshape(-1, 2)
     uvs_3d = np.insert(uvs_2d, 2, 0.0, axis=1)
     uv_values = uvs_3d.flatten().tolist()
 
     geo.createPoints(np.concatenate(points).tolist())
     geo.createPolygons(faces)
 
-    geo.addAttrib(hou.attribType.Point, 'uv', (0.0, 0.0, 0.0))
-    geo.setPointFloatAttribValues('uv', uv_values)
+    geo.addAttrib(hou.attribType.Vertex, 'uv', (0.0, 0.0, 0.0))
+    geo.setVertexFloatAttribValues('uv', uv_values)
 
     geo.addAttrib(hou.attribType.Prim, 'texture', '')
     geo.setPrimStringAttribValues('texture', textures)

@@ -36,9 +36,12 @@ def build(
     textures = [str(prim.attribValue('texture')) for prim in prims]
 
     # Pack textures
+    if progress is not None:
+        progress(0, 'Packing textures ...')
     sizes = _sizes(textures)
     pages = atlas_module.plan_pages(sizes, resolution, padding)
 
+    # Writing atlases
     placements: dict[str, Placement] = {}
     paths: dict[str, str] = {}
     os.makedirs(directory, exist_ok=True)
@@ -49,12 +52,35 @@ def build(
         for placement in page.placements:
             placements[placement.texture] = placement
             paths[placement.texture] = path
+
         if progress is not None:
             progress((index + 1) / total, f'Writing atlas {index + 1}/{total}')
 
     # Remap uvs
-    page_size = pages[0].size if pages else resolution
-    _remap_uv(geo, prims, textures, placements, page_size)
+    if progress is not None:
+        progress(0, 'Remapping uvs ...')
+
+    # Move every primitive's vertices into its texture's atlas rect
+    uv_attrib = geo.findVertexAttrib('uv')
+    if uv_attrib:
+        values = np.asarray(geo.vertexFloatAttribValues('uv'), dtype=np.float64)
+        values = values.reshape(-1, uv_attrib.size())
+        result = values.copy()
+        total = len(prims)
+        for index, (prim, texture) in enumerate(zip(prims, textures, strict=True)):
+            placement = placements.get(texture)
+            if placement is None:
+                continue
+
+            indices = [vertex.linearNumber() for vertex in prim.vertices()]
+            remapped = atlas_module.remap_uv(values[indices, :2], placement, resolution)
+            result[indices, 0] = remapped[:, 0]
+            result[indices, 1] = remapped[:, 1]
+
+            if progress is not None:
+                progress((index + 1) / total, f'Remapping uvs {index + 1}/{total}')
+
+        geo.setVertexFloatAttribValues('uv', result.reshape(-1).tolist())
 
     # Replace texture attribute
     geo.addAttrib(hou.attribType.Prim, 'atlas', '')
@@ -93,29 +119,3 @@ def _write_page(page: AtlasPage, path: str, extension: str) -> None:
         atlas.save(path, quality=95)
     else:
         atlas.save(path)
-
-
-def _remap_uv(
-    geo: hou.Geometry,
-    prims: Sequence[hou.Prim],
-    textures: Sequence[str],
-    placements: dict[str, Placement],
-    resolution: int,
-) -> None:
-    """Move every primitive's points into its texture's atlas rect."""
-
-    uv_attrib = geo.findPointAttrib('uv')
-    if uv_attrib is None:
-        return
-
-    values = np.asarray(geo.pointFloatAttribValues('uv'), dtype=np.float64)
-    values = values.reshape(-1, uv_attrib.size())
-    for prim, texture in zip(prims, textures, strict=True):
-        placement = placements.get(texture)
-        if placement is None:
-            continue
-        indices = sorted({vertex.point().number() for vertex in prim.vertices()})
-        remapped = atlas_module.remap_uv(values[indices, :2], placement, resolution)
-        values[indices, 0] = remapped[:, 0]
-        values[indices, 1] = remapped[:, 1]
-    geo.setPointFloatAttribValues('uv', values.reshape(-1).tolist())
