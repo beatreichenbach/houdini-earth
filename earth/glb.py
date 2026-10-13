@@ -49,6 +49,7 @@ def load_chunk(glb_path: str) -> Chunk:
     try:
         scene = trimesh.load_scene(glb_path)
 
+        # Decode primitives
         primitives = []
         for index, geometry in enumerate(scene.dump()):
             if not isinstance(geometry, trimesh.Trimesh):

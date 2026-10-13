@@ -34,6 +34,8 @@ def build(
 
     prims = list(geo.prims())
     textures = [str(prim.attribValue('texture')) for prim in prims]
+
+    # Pack textures
     sizes = _sizes(textures)
     pages = atlas_module.plan_pages(sizes, resolution, padding)
 
@@ -50,9 +52,11 @@ def build(
         if progress is not None:
             progress((index + 1) / total, f'Writing atlas {index + 1}/{total}')
 
+    # Remap uvs
     page_size = pages[0].size if pages else resolution
     _remap_uv(geo, prims, textures, placements, page_size)
 
+    # Replace texture attribute
     geo.addAttrib(hou.attribType.Prim, 'atlas', '')
     for prim, texture in zip(prims, textures, strict=True):
         prim.setAttribValue('atlas', paths.get(texture, ''))

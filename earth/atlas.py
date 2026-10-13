@@ -39,6 +39,8 @@ def plan_pages(
 
     columns = resolution // CELL
     size = columns * CELL
+
+    # Sort textures by height
     items = sorted(sizes.items(), key=lambda item: (-item[1][1], -item[1][0], item[0]))
 
     atlas_pages: list[AtlasPage] = []
@@ -54,11 +56,13 @@ def plan_pages(
         if cols > columns or rows > columns:
             raise ValueError(f'{texture} does not fit in a {resolution}px atlas')
 
+        # New shelf
         if column + cols > columns:
             shelf += shelf_rows
             column = 0
             shelf_rows = 0
 
+        # New page
         if shelf + rows > columns:
             atlas_page = AtlasPage(page, size, placements)
             atlas_pages.append(atlas_page)

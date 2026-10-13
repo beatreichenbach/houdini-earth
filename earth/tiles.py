@@ -68,6 +68,7 @@ class TileLoader:
     def root(self) -> dict:
         """Return the root tileset JSON, using the cache when possible."""
 
+        # Cached root
         root_file = self.cache.path / 'root.json'
         if root_file.is_file():
             cached_root = json.loads(root_file.read_text())
@@ -82,6 +83,7 @@ class TileLoader:
             logger.debug('Cached root tileset is stale, refetching')
             self.cache.clear()
 
+        # Fresh root
         logger.debug('Fetching root tileset')
         data = self._download(f'{TILE_URL}{ROOT_URI}?key={self.api_key}')
         if data is None:
@@ -105,6 +107,8 @@ class TileLoader:
 
         root = self.root()
         initial_refine = Refine(root['refine']) if root.get('refine') else refine
+
+        # Select tiles
         selections: list[TileSelection] = []
         self._download_tile(
             parse_tile(root['root']),
@@ -119,6 +123,7 @@ class TileLoader:
             selections = selections[:max_meshes]
         logger.debug('Selected %d tile(s)', len(selections))
 
+        # Download meshes
         manifest = TileManifest()
         total = len(selections)
         for index, selection in enumerate(selections):
@@ -171,6 +176,7 @@ class TileLoader:
     ) -> None:
         """Collect the mesh tiles below a node that fall within the region."""
 
+        # Prune tiles without a bounding volume
         if tile.bounding_volume is None:
             logger.warning(
                 'Pruning tile without a bounding volume: %s',
@@ -186,6 +192,7 @@ class TileLoader:
         desired = min_error + blend * (max_error - min_error)
         selected = desired > tile.geometric_error or not tile.children
 
+        # Add selected content
         if selected and tile.content_uri is not None:
             if tile.is_external_tileset:
                 data = self._download(self._content_url(tile.content_uri))
@@ -207,6 +214,7 @@ class TileLoader:
             if active_refine == Refine.REPLACE:
                 return
 
+        # Descend into children
         for child in tile.children:
             self._download_tile(
                 child, active_refine, region, min_error, max_error, selections

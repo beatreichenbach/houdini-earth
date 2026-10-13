@@ -129,6 +129,7 @@ def build_geometry() -> None:
             attrib.destroy()
     geo.deletePoints(geo.points())
 
+    # Decode and assemble the meshes
     chunks: list[glb.Chunk] = []
     problems: list[str] = []
     with hou.InterruptableOperation('Assembling GLTF', 'Loading meshes', True) as op:  # ty: ignore[invalid-context-manager]
@@ -168,6 +169,7 @@ def build_atlas() -> None:
     if geo is None:
         return
 
+    # Parameters
     resolution = cast(hou.Parm, parent.parm('resolution')).evalAsInt()
     padding = cast(hou.Parm, parent.parm('padding')).evalAsInt()
     directory = cast(hou.Parm, parent.parm('dir')).evalAsString()
@@ -183,6 +185,7 @@ def build_atlas() -> None:
         extension,
     )
 
+    # Build the atlas
     with hou.InterruptableOperation('Building atlas', 'Packing textures', True) as op:  # ty: ignore[invalid-context-manager]
         atlas.build(
             geo,

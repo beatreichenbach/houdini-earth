@@ -28,6 +28,7 @@ def build_chunk(
     textures: list[str] = []
     offset = 0
 
+    # Collect attributes
     total = len(chunks)
     for index, chunk in enumerate(chunks):
         for primitive in chunk.primitives:
@@ -46,6 +47,7 @@ def build_chunk(
         logger.debug('No primitives to build')
         return
 
+    # Create geometry
     uvs_2d = np.concatenate(uvs, axis=0)
     uvs_3d = np.insert(uvs_2d, 2, 0.0, axis=1)
     uv_values = uvs_3d.flatten().tolist()
