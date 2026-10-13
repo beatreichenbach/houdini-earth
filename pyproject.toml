@@ -10,13 +10,14 @@ readme = "README.md"
 license = { text = "GPL-3.0-or-later" }
 dependencies = [
     "dracopy",
-    "pygltflib",
     "requests",
+    "trimesh",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "numpy>=1.26", # Houdini ships numpy
+    "numpy>=1.26",
+    "pillow",
     "pre-commit>=4.0",
     "python-semantic-release>=9.0",
     "pytest>=8.0",
