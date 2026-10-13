@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v0.2.1 (2026-10-13)
+
+### Bug Fixes
+
+- Atlas packing
+  ([`bc6cdd8`](https://github.com/beatreichenbach/houdini-earth/commit/bc6cdd8c521eb7bcd0e4653f8bbcc93544d5bf0e))
+
+
 ## v0.2.0 (2026-10-13)
 
 ### Code Style
