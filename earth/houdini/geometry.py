@@ -31,12 +31,14 @@ def build_chunk(
     total = len(chunks)
     for index, chunk in enumerate(chunks):
         for primitive in chunk.primitives:
-            count = primitive.points.shape[0]
             points.append(primitive.points)
             uvs.append(primitive.uvs)
             faces.extend((primitive.faces + offset).tolist())
-            textures.extend([primitive.texture or ''] * len(primitive.faces))
+            textures.extend([primitive.texture] * len(primitive.faces))
+
+            count = primitive.points.shape[0]
             offset += count
+
         if progress is not None:
             progress((index + 1) / total, f'Building mesh {index + 1}/{total}')
 

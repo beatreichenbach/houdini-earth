@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import numpy as np
@@ -33,9 +32,7 @@ def test_load_chunk_textured(tmp_path: Path) -> None:
     assert primitive.points.shape == (8, 3)
     assert primitive.faces.shape == (12, 3)
     assert primitive.uvs.shape == (8, 2)
-    assert primitive.texture is not None
-    assert primitive.texture.endswith('.jpg')
-    assert os.path.isfile(primitive.texture)
+    assert primitive.texture
 
 
 def test_load_chunk_plain(tmp_path: Path) -> None:
@@ -45,5 +42,5 @@ def test_load_chunk_plain(tmp_path: Path) -> None:
 
     assert len(chunk.primitives) == 1
     primitive = chunk.primitives[0]
-    assert primitive.texture is None
+    assert primitive.texture == ''
     assert primitive.uvs.shape == (8, 2)

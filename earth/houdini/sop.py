@@ -13,7 +13,7 @@ from ..cache import Cache
 from ..geodesy import tangent_frame
 from ..region import RadialRegion, RectangularRegion
 from ..tiles import TileLoader
-from . import geometry
+from . import atlas, geometry
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +83,7 @@ def download_tiles() -> None:
             max_error=max_error,
             max_meshes=max_meshes,
         )
+
     logger.debug(
         'Manifest: %d tile(s), %d warning(s)',
         len(manifest.tiles),
@@ -155,6 +156,43 @@ def build_geometry() -> None:
         for problem in problems:
             logger.warning(problem)
         raise hou.NodeWarning('mesh(es) could not be loaded')
+
+
+def build_atlas() -> None:
+    """Pack the per-tile textures into atlas pages."""
+
+    node = cast(hou.SopNode, hou.pwd())
+    parent = cast(hou.SopNode, node.parent())
+
+    geo = node.geometry()
+    if geo is None:
+        return
+
+    resolution = cast(hou.Parm, parent.parm('resolution')).evalAsInt()
+    padding = cast(hou.Parm, parent.parm('padding')).evalAsInt()
+    directory = cast(hou.Parm, parent.parm('dir')).evalAsString()
+    prefix = cast(hou.Parm, parent.parm('prefix')).evalAsString()
+    extension = cast(hou.Parm, parent.parm('ext')).evalAsString()
+
+    logger.debug(
+        'Atlas: resolution=%s padding=%s directory=%s prefix=%s extension=%s',
+        resolution,
+        padding,
+        directory,
+        prefix,
+        extension,
+    )
+
+    with hou.InterruptableOperation('Building atlas', 'Packing textures', True) as op:  # ty: ignore[invalid-context-manager]
+        atlas.build(
+            geo,
+            resolution,
+            padding,
+            directory,
+            prefix,
+            extension,
+            op.updateLongProgress,
+        )
 
 
 def clear_cache() -> None:
