@@ -62,4 +62,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, the Houdini de
 
 ## License
 
-Copyright (c) 2026 Beat Reichenbach. This project is licensed under the [GPLv3 License](LICENSE).
+Copyright (c) 2026 Beat Reichenbach.
+This project is licensed under the [GPLv3 License](LICENSE).
+
+## Google Data
+
+The geometry and imagery this tool produces come from Google's Photorealistic 3D Tiles and remain the copyright of Google and its licensors.
+You are not allowed to use, redistribute or publish this data except as permitted by the [Google Maps Platform Terms of Service](https://cloud.google.com/maps-platform/terms).
