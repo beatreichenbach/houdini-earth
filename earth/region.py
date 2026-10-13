@@ -14,8 +14,17 @@ class Region(ABC):
     """A selection region with a falloff."""
 
     @abstractmethod
-    def evaluate(self, volume: BoundingVolume | None) -> tuple[bool, float]:
-        """Return whether to keep a tile and its blend from 0 (near) to 1 (far)."""
+    def evaluate(self, volume: BoundingVolume) -> float:
+        """Return the blend from 0 (near) to 1 (far), negative if not kept."""
+
+    @staticmethod
+    def _falloff_blend(distance: float, radius: float, falloff: float) -> float:
+        if distance > radius + falloff:
+            return -1.0
+        if falloff <= 0.0:
+            return 0.0 if distance <= radius else -1.0
+        blend = (distance - radius) / falloff
+        return min(max(blend, 0.0), 1.0)
 
 
 @dataclass(frozen=True, eq=False)
@@ -26,14 +35,10 @@ class RadialRegion(Region):
     radius: float
     falloff: float
 
-    def evaluate(self, volume: BoundingVolume | None) -> tuple[bool, float]:
-        """Return whether to keep a tile and its blend from 0 to 1."""
-
-        if volume is None:
-            return True, 0.0
-        return _falloff_blend(
-            volume.signed_distance(self.center), self.radius, self.falloff
-        )
+    def evaluate(self, volume: BoundingVolume) -> float:
+        distance = volume.signed_distance(self.center)
+        falloff_blend = self._falloff_blend(distance, self.radius, self.falloff)
+        return falloff_blend
 
 
 @dataclass(frozen=True, eq=False)
@@ -47,17 +52,14 @@ class RectangularRegion(Region):
     height: float
     falloff: float
 
-    def evaluate(self, volume: BoundingVolume | None) -> tuple[bool, float]:
-        """Return whether to keep a tile and its blend from 0 to 1."""
-
-        if volume is None:
-            return True, 0.0
+    def evaluate(self, volume: BoundingVolume) -> float:
         x0, x1, y0, y1 = self._extent(volume)
         half_width = self.width * 0.5
         half_height = self.height * 0.5
         gap_x = max(-half_width - x1, x0 - half_width, 0.0)
         gap_y = max(-half_height - y1, y0 - half_height, 0.0)
-        return _falloff_blend(max(gap_x, gap_y), 0.0, self.falloff)
+        falloff_blend = self._falloff_blend(max(gap_x, gap_y), 0.0, self.falloff)
+        return falloff_blend
 
     def _extent(self, volume: BoundingVolume) -> tuple[float, float, float, float]:
         """Return the tile's bounds on the tangent plane as x0, x1, y0, y1."""
@@ -70,16 +72,3 @@ class RectangularRegion(Region):
         ex = float(np.abs(axis @ self.east).sum())
         ey = float(np.abs(axis @ self.north).sum())
         return cx - ex, cx + ex, cy - ey, cy + ey
-
-
-def _falloff_blend(
-    distance: float, radius: float, falloff: float
-) -> tuple[bool, float]:
-    """Return whether a distance is within range and its blend from 0 to 1."""
-
-    if distance > radius + falloff:
-        return False, 1.0
-    if falloff <= 0.0:
-        return distance <= radius, 0.0
-    blend = (distance - radius) / falloff
-    return True, min(max(blend, 0.0), 1.0)

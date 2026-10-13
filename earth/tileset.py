@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
@@ -70,7 +70,7 @@ class Tile:
     bounding_volume: BoundingVolume | None = None
     content_uri: str | None = None
     refine: Refine | None = None
-    children: list[Tile] = field(default_factory=list)
+    children: tuple[Tile, ...] = ()
 
     @property
     def is_external_tileset(self) -> bool:
@@ -82,26 +82,42 @@ class Tile:
 
 
 def parse_tile(data: dict[str, Any]) -> Tile:
-    """Return a Tile parsed from a tileset JSON node."""
+    """
+    Return a Tile parsed from a tileset JSON node.
+
+    :raises NotImplementedError: if a tile uses an unsupported bounding volume.
+    """
 
     uri: str | None = None
     content = data.get('content')
     if isinstance(content, dict):
         uri = content.get('uri')
 
-    bounding_volume: BoundingVolume | None = None
-    box = data.get('boundingVolume', {}).get('box')
-    if box is not None:
-        bounding_volume = BoundingVolume(tuple(float(v) for v in box))
+    error = float(data.get('geometricError', 0.0))
+    bounding_volume = _bounding_volume(data)
+    refine = Refine(data['refine']) if data.get('refine') else None
+    children = tuple(parse_tile(child) for child in data.get('children', []))
 
-    refine: Refine | None = None
-    if data.get('refine'):
-        refine = Refine(data['refine'])
-
-    return Tile(
-        geometric_error=float(data.get('geometricError', 0.0)),
+    tile = Tile(
+        geometric_error=error,
         bounding_volume=bounding_volume,
         content_uri=uri,
         refine=refine,
-        children=[parse_tile(child) for child in data.get('children', [])],
+        children=children,
     )
+    return tile
+
+
+def _bounding_volume(data: dict) -> BoundingVolume | None:
+    """Return the Bounding Volume from JSON data."""
+
+    volume = data.get('boundingVolume')
+    if isinstance(volume, dict):
+        box = volume.get('box')
+        if isinstance(box, list):
+            bounding_volume = BoundingVolume(tuple(float(value) for value in box))
+            return bounding_volume
+        else:
+            keys = sorted(volume) if isinstance(volume, dict) else volume
+            raise NotImplementedError(f'Unsupported bounding volume: {keys}')
+    return None

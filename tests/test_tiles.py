@@ -45,11 +45,11 @@ def _leaf(center_x: float, error: float, uri: str) -> dict:
 
 
 def _install(monkeypatch: MonkeyPatch, root: dict) -> None:
-    def get(url: str, timeout: float | None = None) -> MockResponse:
+    def get(session: object, url: str, timeout: float | None = None) -> MockResponse:
         payload = json.dumps(root).encode() if 'root.json' in url else b'glb'
         return MockResponse(payload)
 
-    monkeypatch.setattr(tiles_module.requests, 'get', get)
+    monkeypatch.setattr(tiles_module.requests.Session, 'get', get)
 
 
 def test_collect_selects_and_downloads(

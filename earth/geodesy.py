@@ -41,12 +41,14 @@ def tangent_frame(latitude: float, longitude: float) -> Frame:
     """Return the local tangent frame for a latitude and longitude."""
 
     center = wgs84_to_cartesian(latitude, longitude)
-    north = wgs84_to_cartesian(latitude + EPS, longitude) - wgs84_to_cartesian(
-        latitude - EPS, longitude
-    )
-    east = wgs84_to_cartesian(latitude, longitude + EPS) - wgs84_to_cartesian(
-        latitude, longitude - EPS
-    )
+
+    top = wgs84_to_cartesian(latitude + EPS, longitude)
+    bottom = wgs84_to_cartesian(latitude - EPS, longitude)
+    left = wgs84_to_cartesian(latitude, longitude + EPS)
+    right = wgs84_to_cartesian(latitude, longitude - EPS)
+    north = top - bottom
+    east = left - right
+
     north = north / np.linalg.norm(north)
     east = east / np.linalg.norm(east)
     up = np.cross(east, north)

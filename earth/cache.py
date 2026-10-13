@@ -45,7 +45,10 @@ class Cache:
     def clear(self) -> None:
         """Delete all cached tiles."""
 
-        for pattern in ('*.json', '*.jpg', '*.glb'):
-            for path in self.path.glob(pattern):
+        if not self.path.is_dir():
+            return
+
+        for path in self.path.iterdir():
+            if path.is_file():
                 with contextlib.suppress(PermissionError):
                     path.unlink(missing_ok=True)
