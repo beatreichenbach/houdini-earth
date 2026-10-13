@@ -8,6 +8,8 @@
 Earth builds real-world geometry in SideFX Houdini from Google's photorealistic 3D Tiles.
 It is inspired by the original [EarthMeshHoudini](https://github.com/xjorma/EarthMeshHoudini) plugin.
 
+![Render](.github/assets/render.jpg)
+
 ## Installation
 
 Earth is installed as a Houdini Package.
@@ -51,8 +53,8 @@ Place the **Earth Mesh** node in your scene, set the **Google API Key** and the 
 
 Other parameters:
 
-- **Error** set the level of detail (`2-60000`).
-- **Max Meshes** limits the number of downloaded tiles.
+- **Error**: set the level of detail (`2-60000`).
+- **Max Meshes**: limits the number of downloaded tiles.
 
 ## Development
 
