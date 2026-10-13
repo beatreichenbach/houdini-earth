@@ -18,6 +18,7 @@ dependencies = [
 dev = [
     "numpy>=1.26", # Houdini ships numpy
     "pre-commit>=4.0",
+    "python-semantic-release>=9.0",
     "pytest>=8.0",
     "ruff>=0.16",
     "ty>=0.0.82",
@@ -26,7 +27,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
@@ -34,6 +35,18 @@ include = ["earth*"]
 
 [tool.setuptools.package-data]
 earth = ["py.typed"]
+
+[tool.semantic_release]
+allow_zero_version = true
+version_variables = ["earth/__init__.py:__version__"]
+version_toml = ["pyproject.toml:project.version"]
+build_command = "bash scripts/build_release.sh"
+
+[tool.semantic_release.remote]
+ignore_token_for_push = true
+
+[tool.semantic_release.publish]
+upload_to_vcs_release = true
 
 [tool.ruff]
 target-version = "py311"

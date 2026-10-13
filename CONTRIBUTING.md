@@ -6,7 +6,7 @@ To get started:
 
 ```sh
 uv venv --python 3.11
-uv sync
+uv sync --extra dev
 pre-commit install
 ```
 
@@ -19,22 +19,30 @@ ty check
 pytest
 ```
 
-### Releasing Changes
+## Built-in Packages
 
-Releases are built by pushing a `v*` tag, which triggers the release workflow.
-Bump `version` in `pyproject.toml` and `__version__` in `earth/__init__.py` before tagging.
+Houdini already ships some of the dependencies, so they are not bundled in the release and do not need to be installed:
+
+- `requests` — tile downloads
+- `numpy` — geometry and tile math
+- `pillow` — texture handling in `trimesh`
+
+See the [Houdini third-party libraries](https://www.sidefx.com/docs/houdini/licenses/) page for the full list.
 
 ## Working with Houdini
 
-Build the runtime dependencies and symlink the sources so Houdini always loads
-the local files:
+Set up the development package in `build/`:
 
 ```sh
-mkdir -p build/otls build/python
-uv pip install --target build/python dracopy pygltflib
-ln -sfn "$PWD"/src/*.hda build/otls/
-ln -sfn "$PWD"/earth build/python/earth
+./scripts/build_dev.sh
 ```
 
-Then point a Houdini package at `build/otls` via `HOUDINI_OTLSCAN_PATH` and at
-`build/python` via `PYTHONPATH`.
+Point Houdini at the package by adding `build/` to `HOUDINI_PACKAGE_DIR`:
+
+## Releasing Changes
+
+Releases are published with [python-semantic-release](https://python-semantic-release.readthedocs.io):
+
+```sh
+semantic-release version && semantic-release publish
+```
