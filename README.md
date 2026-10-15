@@ -31,8 +31,14 @@ Earth is installed as a Houdini Package.
 
 ### Google Cloud Account
 
-The node requires a Google Cloud API key with the **Map Tiles API** enabled.
+The node requires a Google Cloud API key with the **Map Tiles API** and **Maps Elevation API** enabled.
 See the [Google Cloud documentation](https://cloud.google.com/gcp) for how to create a project and enable the API.
+
+Test if your key supports the Map Tiles API by trying this link:
+<https://tile.googleapis.com/v1/3dtiles/root.json?key=YOUR_API_KEY>
+
+Test if your key supports the Elevation API by trying this link:
+<https://maps.googleapis.com/maps/api/elevation/json?locations=0%2C0&key=YOUR_API_KEY>
 
 ### Dependencies
 
