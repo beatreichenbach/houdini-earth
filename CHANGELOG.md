@@ -2,6 +2,27 @@
 
 <!-- version list -->
 
+## v0.2.2 (2026-10-22)
+
+### Bug Fixes
+
+- Clean up hda, refine parameters, add packing, adaptive atlas
+  ([`760ccc1`](https://github.com/beatreichenbach/houdini-earth/commit/760ccc1d389c1eac04408b6ebf4967142ca8c84b))
+
+### Build System
+
+- Add version number
+  ([`3f3968c`](https://github.com/beatreichenbach/houdini-earth/commit/3f3968cedd37850a5193121431efaf5a6ae4823d))
+
+- Remove old hda
+  ([`464cd80`](https://github.com/beatreichenbach/houdini-earth/commit/464cd800648ae03e2a8b05e051f129f37e212177))
+
+### Documentation
+
+- Update google cloud instructions
+  ([`784c9ac`](https://github.com/beatreichenbach/houdini-earth/commit/784c9ac79007874df29e0af9365988f4edd7e347))
+
+
 ## v0.2.1 (2026-10-13)
 
 ### Bug Fixes
