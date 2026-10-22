@@ -29,6 +29,8 @@ rm -rf "$staging"/earth/python/bin
 rm -f "$staging"/earth/python/.lock
 find "$staging" -name __pycache__ -type d -prune -exec rm -rf {} +
 
-(cd "$staging" && zip -r ../../dist/earth.zip .)
+rm -rf dist
+mkdir -p dist
+(cd "$staging" && zip -r "../../dist/earth-v${version}.zip" .)
 
-echo "Built dist/earth.zip (version ${version})"
+echo "Built dist/earth-v${version}.zip"
