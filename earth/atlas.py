@@ -9,12 +9,15 @@ import numpy as np
 CELL = 256
 
 
+class AtlasError(ValueError):
+    """A texture cannot be packed into an atlas."""
+
+
 @dataclass(frozen=True)
 class Placement:
     """The rectangle a texture occupies in an atlas page."""
 
     texture: str
-    page: int
     x: int
     y: int
     width: int
@@ -26,7 +29,8 @@ class AtlasPage:
     """An atlas page and the placements it contains."""
 
     index: int
-    size: int
+    width: int
+    height: int
     placements: list[Placement] = field(default_factory=list)
 
 
@@ -37,8 +41,7 @@ def plan_pages(
 ) -> list[AtlasPage]:
     """Return atlas pages that shelf-pack the textures into 256px cells."""
 
-    columns = resolution // CELL
-    size = columns * CELL
+    columns = max(1, resolution // CELL)
 
     # Sort textures by height
     items = sorted(sizes.items(), key=lambda item: (-item[1][1], -item[1][0], item[0]))
@@ -49,12 +52,14 @@ def plan_pages(
     column = 0
     shelf = 0
     shelf_rows = 0
+    page_width = 0
+    page_height = 0
 
     for texture, (width, height) in items:
-        cols = _cells(width + 2 * padding)
-        rows = _cells(height + 2 * padding)
+        cols = _cell_count(width + 2 * padding)
+        rows = _cell_count(height + 2 * padding)
         if cols > columns or rows > columns:
-            raise ValueError(f'{texture} does not fit in a {resolution}px atlas')
+            raise AtlasError(f'{texture} does not fit in a {resolution}px atlas')
 
         # New shelf
         if column + cols > columns:
@@ -64,17 +69,18 @@ def plan_pages(
 
         # New page
         if shelf + rows > columns:
-            atlas_page = AtlasPage(page, size, placements)
+            atlas_page = AtlasPage(page, page_width, page_height, placements)
             atlas_pages.append(atlas_page)
             page += 1
             placements = []
             column = 0
             shelf = 0
             shelf_rows = 0
+            page_width = 0
+            page_height = 0
 
         placement = Placement(
             texture=texture,
-            page=page,
             x=column * CELL + padding,
             y=shelf * CELL + padding,
             width=width,
@@ -83,24 +89,29 @@ def plan_pages(
         placements.append(placement)
         column += cols
         shelf_rows = max(shelf_rows, rows)
+        page_width = max(page_width, placement.x + placement.width + padding)
+        page_height = max(page_height, placement.y + placement.height + padding)
 
     if placements:
-        atlas_page = AtlasPage(page, size, placements)
+        atlas_page = AtlasPage(page, page_width, page_height, placements)
         atlas_pages.append(atlas_page)
     return atlas_pages
 
 
-def remap_uv(uv: np.ndarray, placement: Placement, resolution: int) -> np.ndarray:
+def remap_uv(
+    uv: np.ndarray, placement: Placement, page_width: int, page_height: int
+) -> np.ndarray:
     """Return UVs remapped from tile space into the placement's atlas rect."""
 
     left = placement.x + uv[:, 0] * placement.width
-    u = left / resolution
-    top = resolution - placement.y - placement.height + uv[:, 1] * placement.height
-    v = top / resolution
-    return np.stack((u, v), axis=1)
+    u = left / page_width
+    top = page_height - placement.y - placement.height + uv[:, 1] * placement.height
+    v = top / page_height
+    remapped = np.stack((u, v), axis=1)
+    return remapped
 
 
-def _cells(size: int) -> int:
-    """Return how many 256px cells a size needs."""
+def _cell_count(size: int) -> int:
+    """Return how many cells a size needs."""
 
     return max(1, -(-size // CELL))

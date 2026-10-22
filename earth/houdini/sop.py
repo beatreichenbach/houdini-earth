@@ -9,8 +9,8 @@ from typing import cast
 import hou
 
 from .. import glb
-from ..cache import Cache
-from ..geodesy import tangent_frame
+from ..cache import Cache, remove_files
+from ..geodesy import tangent_frame, tangent_offset
 from ..region import RadialRegion, RectangularRegion
 from ..tiles import TileLoader
 from . import atlas, geometry
@@ -18,140 +18,107 @@ from . import atlas, geometry
 logger = logging.getLogger(__name__)
 
 
-def download_tiles() -> None:
-    """Download and select the 3D Tiles for the node's location."""
+def build_geometry(
+    coordinates: tuple[float, float],
+    center: tuple[float, float],
+    shape: str,
+    size: tuple[float, float],
+    min_error: float,
+    max_error: float,
+    falloff: float,
+    falloff_exponent: float,
+    extract_textures: bool,
+    pack_error: float,
+    google_api_key: str,
+    cachedir: str,
+    max_meshes: int,
+) -> None:
+    """Build the selected tiles in one download and geometry pass."""
 
     node = cast(hou.SopNode, hou.pwd())
-    parent = cast(hou.SopNode, node.parent())
 
-    # Parameters
-    coordinates = cast(tuple[float, float], parent.evalParmTuple('coordinates'))
-    latitude, longitude = coordinates
-    parm = cast(hou.Parm, parent.parm('falloff'))
-    falloff = parm.evalAsFloat()
+    geo = node.geometry()
+    if geo is None:
+        return
 
-    shape = parent.evalParm('shape')
-    frame = tangent_frame(latitude, longitude)
-
-    size = cast(tuple[float, float], parent.evalParmTuple('size'))
-    width, height = size
-    parm = cast(hou.Parm, parent.parm('radius'))
-    radius = parm.evalAsFloat()
-
-    parm = cast(hou.Parm, parent.parm('google_api_key'))
-    google_api_key = parm.evalAsString()
-    parm = cast(hou.Parm, parent.parm('cachedir'))
-    cachedir = parm.evalAsString()
-
-    parm = cast(hou.Parm, parent.parm('min_error'))
-    min_error = parm.evalAsFloat()
-    parm = cast(hou.Parm, parent.parm('max_error'))
-    max_error = parm.evalAsFloat()
-    parm = cast(hou.Parm, parent.parm('max_meshes'))
-    max_meshes = parm.evalAsInt()
-
-    logger.debug(
-        'Parameters: lat=%s lon=%s shape=%s falloff=%s error=%s-%s max_meshes=%s',
-        latitude,
-        longitude,
-        shape,
-        falloff,
-        min_error,
-        max_error,
-        max_meshes,
-    )
-
+    frame = tangent_frame(coordinates[0], coordinates[1])
+    region_center = tangent_offset(frame, center[0], center[1])
     if shape == 'rectangle':
         region = RectangularRegion(
-            center=frame.center,
+            center=region_center,
             east=frame.east,
-            north=frame.north,
-            width=width,
-            height=height,
+            south=frame.south,
+            width=size[0],
+            height=size[1],
             falloff=falloff,
+            exponent=falloff_exponent,
         )
     else:
-        region = RadialRegion(center=frame.center, radius=radius, falloff=falloff)
+        region = RadialRegion(
+            center=region_center,
+            radius=min(size[0], size[1]) * 0.5,
+            falloff=falloff,
+            exponent=falloff_exponent,
+        )
 
-    # Download
+    geo.clear()
+    geo.addAttrib(hou.attribType.Global, 'xform', (0.0,) * 16)
+    geo.setGlobalAttribValue('xform', frame.transform.flatten().tolist())
+
     loader = TileLoader(api_key=google_api_key, cache=Cache(cachedir))
-    with hou.InterruptableOperation('Downloading', 'Selecting tiles', True) as op:  # ty: ignore[invalid-context-manager]
-        loader.progress = op.updateLongProgress
+    chunks: list[glb.Chunk] = []
+    problems: list[str] = []
+
+    with hou.InterruptableOperation('Building Earth', 'Selecting tiles', True) as op:  # ty: ignore[invalid-context-manager]
+
+        def download_progress(progress: float, label: str) -> None:
+            op.updateLongProgress(max(progress, 0.0) * 0.5, label)
+
+        loader.progress = download_progress
         manifest = loader.collect(
             region=region,
             min_error=min_error,
             max_error=max_error,
             max_meshes=max_meshes,
+            pack_error=pack_error,
         )
+        problems.extend(manifest.warnings)
 
-    logger.debug(
-        'Manifest: %d tile(s), %d warning(s)',
-        len(manifest.tiles),
-        len(manifest.warnings),
-    )
-
-    # Store tiles on geo
-    geo = node.geometry()
-    if geo is None:
-        return
-
-    # Store the local tangent transform for the optional Transform By Attribute node.
-    geo.addAttrib(hou.attribType.Global, 'xform', (0.0,) * 16)
-    geo.setGlobalAttribValue('xform', frame.transform.flatten().tolist())
-
-    # Create one point per tile carrying its mesh path and geometric error.
-    geo.addAttrib(hou.attribType.Point, 'mesh', '')
-    geo.addAttrib(hou.attribType.Point, 'error', 0.0)
-    geo.createPoints([(0.0, 0.0, 0.0)] * len(manifest.tiles))
-    geo.setPointStringAttribValues('mesh', [tile.mesh for tile in manifest.tiles])
-    geo.setPointFloatAttribValues('error', [tile.error for tile in manifest.tiles])
-
-    if manifest.warnings:
-        for warning in manifest.warnings:
-            logger.warning(warning)
-        raise hou.NodeWarning('tile request(s) failed')
-
-
-def build_geometry() -> None:
-    """Assemble the downloaded GLB tiles into Houdini geometry."""
-
-    node = cast(hou.SopNode, hou.pwd())
-    geo = node.geometry()
-    if geo is None:
-        return
-
-    meshes = [point.stringAttribValue('mesh') for point in geo.points()]
-
-    # Remove the tile marker points and attributes, keeping detail attributes
-    for name in ('mesh', 'error'):
-        attrib = geo.findPointAttrib(name)
-        if attrib is not None:
-            attrib.destroy()
-    geo.deletePoints(geo.points())
-
-    # Decode and assemble the meshes
-    chunks: list[glb.Chunk] = []
-    problems: list[str] = []
-    with hou.InterruptableOperation('Assembling GLTF', 'Loading meshes', True) as op:  # ty: ignore[invalid-context-manager]
-        total = len(meshes)
-        for index, path in enumerate(meshes):
-            if not os.path.isfile(path):
-                problems.append(f'{path} not found')
+        # Decode and assemble the meshes
+        total = len(manifest.tiles)
+        for index, tile in enumerate(manifest.tiles):
+            if not os.path.isfile(tile.mesh):
+                problems.append(f'{tile.mesh} not found')
                 continue
 
             try:
-                chunk = glb.load_chunk(path)
+                chunk = glb.load_chunk(tile.mesh, extract_textures=extract_textures)
             except glb.GlbError as error:
                 problems.append(str(error))
                 continue
 
+            if tile.tile_id is not None:
+                chunk.name = tile.tile_id
             chunks.append(chunk)
 
-            progress = (index + 1) / total
-            op.updateLongProgress(progress, f'Loading mesh {index + 1}/{total}')
-        geometry.build_chunk(geo, chunks, op.updateLongProgress)
+            if total:
+                op.updateLongProgress(
+                    0.5 + 0.25 * (index + 1) / total,
+                    f'Loading mesh {index + 1}/{total}',
+                )
 
-    logger.debug('Decoded %d of %d tile mesh(es)', len(chunks), len(meshes))
+        def build_progress(progress: float, label: str) -> None:
+            op.updateLongProgress(0.75 + 0.25 * progress, label)
+
+        geometry.build_chunk(geo, chunks, build_progress)
+        op.updateLongProgress(1.0, 'Finished')
+
+    logger.debug(
+        'Decoded %d of %d tile mesh(es), %d warning(s)',
+        len(chunks),
+        len(manifest.tiles),
+        len(problems),
+    )
 
     if problems:
         for problem in problems:
@@ -159,32 +126,19 @@ def build_geometry() -> None:
         raise hou.NodeWarning('mesh(es) could not be loaded')
 
 
-def build_atlas() -> None:
+def build_atlas(
+    resolution: int,
+    padding: int,
+    directory: str,
+    extension: str,
+) -> None:
     """Pack the per-tile textures into atlas pages."""
 
     node = cast(hou.SopNode, hou.pwd())
-    parent = cast(hou.SopNode, node.parent())
 
     geo = node.geometry()
     if geo is None:
         return
-
-    # Parameters
-    resolution_string = cast(hou.Parm, parent.parm('resolution')).eval()
-    padding = cast(hou.Parm, parent.parm('padding')).evalAsInt()
-    directory = cast(hou.Parm, parent.parm('dir')).evalAsString()
-    prefix = cast(hou.Parm, parent.parm('prefix')).evalAsString()
-    extension = cast(hou.Parm, parent.parm('ext')).evalAsString()
-    resolution = int(resolution_string)
-
-    logger.debug(
-        'Atlas: resolution=%s padding=%s directory=%s prefix=%s extension=%s',
-        resolution,
-        padding,
-        directory,
-        prefix,
-        extension,
-    )
 
     # Build the atlas
     with hou.InterruptableOperation('Building atlas', 'Packing textures', True) as op:  # ty: ignore[invalid-context-manager]
@@ -193,9 +147,8 @@ def build_atlas() -> None:
             resolution,
             padding,
             directory,
-            prefix,
             extension,
-            op.updateLongProgress,
+            progress=op.updateLongProgress,
         )
 
 
@@ -206,3 +159,16 @@ def clear_cache() -> None:
     parm = cast(hou.Parm, node.parm('cachedir'))
     cachedir = parm.evalAsString()
     Cache(cachedir).clear()
+
+    node.cook(force=True)
+
+
+def clear_maps() -> None:
+    """Delete the downloaded tiles from the cache."""
+
+    node = cast(hou.SopNode, hou.pwd())
+    parm = cast(hou.Parm, node.parm('dir'))
+    directory = parm.evalAsString()
+    remove_files(directory)
+
+    node.cook(force=True)

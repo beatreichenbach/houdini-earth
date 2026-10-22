@@ -11,11 +11,12 @@ B = 6356752.3
 EPS = 0.01
 
 
-def wgs84_to_cartesian(
+def wgs84_to_mesh(
     latitude: float, longitude: float, altitude: float = 0.0
 ) -> np.ndarray:
-    """Return the WGS84 ECEF position for a latitude and longitude."""
+    """Return the WGS84 position in the 3D Tiles mesh frame as [x, z, -y]."""
 
+    # The mesh frame is [X, Z, -Y] of standard ECEF coordinates.
     e2 = 1.0 - (B * B) / (A * A)
     lat = np.radians(latitude)
     lon = np.radians(-longitude)
@@ -28,11 +29,14 @@ def wgs84_to_cartesian(
 
 @dataclass(frozen=True, eq=False)
 class Frame:
-    """The east/north/up tangent frame at a latitude and longitude."""
+    """The east/south/up tangent frame at a latitude and longitude.
+
+    The transform maps local +X to east, +Y to up and +Z to south.
+    """
 
     center: np.ndarray
     east: np.ndarray
-    north: np.ndarray
+    south: np.ndarray
     up: np.ndarray
     transform: np.ndarray
 
@@ -40,24 +44,30 @@ class Frame:
 def tangent_frame(latitude: float, longitude: float) -> Frame:
     """Return the local tangent frame for a latitude and longitude."""
 
-    center = wgs84_to_cartesian(latitude, longitude)
+    center = wgs84_to_mesh(latitude, longitude)
 
-    top = wgs84_to_cartesian(latitude + EPS, longitude)
-    bottom = wgs84_to_cartesian(latitude - EPS, longitude)
-    left = wgs84_to_cartesian(latitude, longitude + EPS)
-    right = wgs84_to_cartesian(latitude, longitude - EPS)
-    north = top - bottom
+    top = wgs84_to_mesh(latitude + EPS, longitude)
+    bottom = wgs84_to_mesh(latitude - EPS, longitude)
+    left = wgs84_to_mesh(latitude, longitude + EPS)
+    right = wgs84_to_mesh(latitude, longitude - EPS)
+    south = bottom - top
     east = left - right
 
-    north = north / np.linalg.norm(north)
+    south = south / np.linalg.norm(south)
     east = east / np.linalg.norm(east)
-    up = np.cross(east, north)
+    up = np.cross(south, east)
     transform = np.array(
         [
-            [north[0], north[1], north[2], 0.0],
-            [up[0], up[1], up[2], 0.0],
             [east[0], east[1], east[2], 0.0],
+            [up[0], up[1], up[2], 0.0],
+            [south[0], south[1], south[2], 0.0],
             [center[0], center[1], center[2], 1.0],
         ]
     )
-    return Frame(center=center, east=east, north=north, up=up, transform=transform)
+    return Frame(center=center, east=east, south=south, up=up, transform=transform)
+
+
+def tangent_offset(frame: Frame, east: float, south: float) -> np.ndarray:
+    """Return the mesh-frame point offset from a tangent frame by east and south."""
+
+    return frame.center + frame.east * east + frame.south * south

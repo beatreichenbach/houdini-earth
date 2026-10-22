@@ -44,3 +44,18 @@ def test_load_chunk_plain(tmp_path: Path) -> None:
     primitive = chunk.primitives[0]
     assert primitive.texture == ''
     assert primitive.uvs.shape == (8, 2)
+
+
+def test_load_chunk_can_skip_texture_extraction(tmp_path: Path) -> None:
+    mesh = trimesh.creation.box()
+    image = PIL.Image.new('RGB', (4, 4), (255, 0, 0))
+    mesh.visual = TextureVisuals(
+        uv=np.zeros((len(mesh.vertices), 2)),
+        material=PBRMaterial(baseColorTexture=image),
+    )
+    path = _export(trimesh.Scene(mesh), tmp_path)
+
+    chunk = load_chunk(path, extract_textures=False)
+
+    assert chunk.primitives[0].texture == ''
+    assert not (tmp_path / 'tile_0.jpg').exists()

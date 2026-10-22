@@ -18,13 +18,18 @@ class Region(ABC):
         """Return the blend from 0 (near) to 1 (far), negative if not kept."""
 
     @staticmethod
-    def _falloff_blend(distance: float, radius: float, falloff: float) -> float:
-        if distance > radius + falloff:
-            return -1.0
+    def _falloff_blend(
+        distance: float, radius: float, falloff: float, exponent: float = 1.0
+    ) -> float:
         if falloff <= 0.0:
             return 0.0 if distance <= radius else -1.0
+        if distance > radius + falloff:
+            return -1.0
         blend = (distance - radius) / falloff
-        return min(max(blend, 0.0), 1.0)
+        blend = min(max(blend, 0.0), 1.0)
+        if exponent <= 0.0:
+            return 0.0 if blend <= 0.0 else 1.0
+        return blend**exponent
 
 
 @dataclass(frozen=True, eq=False)
@@ -34,41 +39,63 @@ class RadialRegion(Region):
     center: np.ndarray
     radius: float
     falloff: float
+    exponent: float = 1.0
 
     def evaluate(self, volume: BoundingVolume) -> float:
         distance = volume.signed_distance(self.center)
-        falloff_blend = self._falloff_blend(distance, self.radius, self.falloff)
+        falloff_blend = self._falloff_blend(
+            distance, self.radius, self.falloff, self.exponent
+        )
         return falloff_blend
 
 
 @dataclass(frozen=True, eq=False)
 class RectangularRegion(Region):
-    """A rectangle, aligned to east/north, with full detail inside it."""
+    """A rectangle, aligned to east/south, with full detail inside it."""
 
     center: np.ndarray
     east: np.ndarray
-    north: np.ndarray
+    south: np.ndarray
     width: float
     height: float
     falloff: float
+    exponent: float = 1.0
 
     def evaluate(self, volume: BoundingVolume) -> float:
-        x0, x1, y0, y1 = self._extent(volume)
         half_width = self.width * 0.5
         half_height = self.height * 0.5
-        gap_x = max(-half_width - x1, x0 - half_width, 0.0)
-        gap_y = max(-half_height - y1, y0 - half_height, 0.0)
-        falloff_blend = self._falloff_blend(max(gap_x, gap_y), 0.0, self.falloff)
+
+        # Reject tiles outside the expanded rectangle's circumscribed circle.
+        # The exact rectangle test below still decides which remaining tiles
+        # are kept.
+        falloff = max(self.falloff, 0.0)
+        broad_phase_radius = float(
+            np.hypot(half_width + falloff, half_height + falloff)
+        )
+        if volume.signed_distance(self.center) > broad_phase_radius:
+            return -1.0
+
+        x0, x1, y0, y1 = self._extent(volume)
+        gap_x = self._axis_gap(x0, x1, half_width)
+        gap_y = self._axis_gap(y0, y1, half_height)
+        falloff_blend = self._falloff_blend(
+            max(gap_x, gap_y), 0.0, self.falloff, self.exponent
+        )
         return falloff_blend
 
     def _extent(self, volume: BoundingVolume) -> tuple[float, float, float, float]:
-        """Return the tile's bounds on the tangent plane as x0, x1, y0, y1."""
+        """Return the tile's east/south bounds as x0, x1, y0, y1."""
 
-        b = volume.box
-        delta = np.array(b[0:3]) - self.center
+        delta = volume.center - self.center
         cx = float(delta @ self.east)
-        cy = float(delta @ self.north)
-        axis = np.array([b[3:6], b[6:9], b[9:12]])
-        ex = float(np.abs(axis @ self.east).sum())
-        ey = float(np.abs(axis @ self.north).sum())
+        cy = float(delta @ self.south)
+        axes = volume.axes
+        ex = float(np.abs(axes @ self.east).sum())
+        ey = float(np.abs(axes @ self.south).sum())
         return cx - ex, cx + ex, cy - ey, cy + ey
+
+    @staticmethod
+    def _axis_gap(lo: float, hi: float, half_extent: float) -> float:
+        """Return the gap from a box extent to a centered half-extent."""
+
+        return max(-half_extent - hi, lo - half_extent, 0.0)

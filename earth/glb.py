@@ -35,11 +35,11 @@ class Primitive:
 class Chunk:
     """A decoded GLB tile."""
 
-    source: str = ''
+    name: str = ''
     primitives: tuple[Primitive, ...] = ()
 
 
-def load_chunk(glb_path: str) -> Chunk:
+def load_chunk(glb_path: str, extract_textures: bool = True) -> Chunk:
     """
     Return the decoded chunk for a GLB file.
 
@@ -49,8 +49,9 @@ def load_chunk(glb_path: str) -> Chunk:
     try:
         scene = trimesh.load_scene(glb_path)
 
-        # Decode primitives
+        name = os.path.splitext(os.path.basename(glb_path))[0]
         primitives = []
+
         for index, geometry in enumerate(scene.dump()):
             if not isinstance(geometry, trimesh.Trimesh):
                 continue
@@ -61,13 +62,16 @@ def load_chunk(glb_path: str) -> Chunk:
             if uvs is None:
                 uvs = np.zeros((points.shape[0], 2), dtype=np.float64)
             uvs = np.asarray(uvs, dtype=np.float64)
-            texture_path = f'{os.path.splitext(glb_path)[0]}_{index}.jpg'
-            texture = _extract_texture(geometry, texture_path)
+            texture = ''
+            if extract_textures:
+                texture_path = f'{os.path.splitext(glb_path)[0]}_{index}.jpg'
+                texture = _extract_texture(geometry, texture_path)
 
             primitive = Primitive(points=points, faces=faces, uvs=uvs, texture=texture)
             primitives.append(primitive)
 
-        return Chunk(source=glb_path, primitives=tuple(primitives))
+        chunk = Chunk(name, tuple(primitives))
+        return chunk
 
     except _GLB_ERRORS as error:
         raise GlbError(f'Could not decode {glb_path}: {error}') from error

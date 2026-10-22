@@ -22,41 +22,34 @@ class BoundingVolume:
 
     box: tuple[float, ...]
 
-    def matrix(self) -> np.ndarray:
-        """Return the box-to-mesh transform as a 4x4 matrix."""
+    @property
+    def center(self) -> np.ndarray:
+        """Return the box center in the mesh frame."""
 
         b = self.box
-        bounding_box_to_mesh = np.array(
+        return np.array([b[0], b[2], -b[1]])
+
+    @property
+    def axes(self) -> np.ndarray:
+        """Return the box half-axis vectors in the mesh frame."""
+
+        b = self.box
+        return np.array(
             [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, -1.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
+                [b[3], b[5], -b[4]],
+                [b[6], b[8], -b[7]],
+                [b[9], b[11], -b[10]],
             ]
         )
-        box_matrix = np.array(
-            [
-                [b[3], b[4], b[5], 0.0],
-                [b[6], b[7], b[8], 0.0],
-                [b[9], b[10], b[11], 0.0],
-                [b[0], b[1], b[2], 1.0],
-            ]
-        )
-        return box_matrix @ bounding_box_to_mesh
 
     def signed_distance(self, point: np.ndarray) -> float:
         """Return the signed distance from a point to the box surface."""
 
-        matrix = self.matrix()
-        axis = matrix[:3, :3]
-        size = np.linalg.norm(axis, axis=1)
-        frame = np.eye(4)
-        frame[:3, :3] = axis / size[:, None]
-        frame[3, :3] = matrix[3, :3]
-        inverse = np.linalg.inv(frame)
-
-        p = np.append(point, 1.0) @ inverse
-        q = np.abs(p[:3]) - size
+        axes = self.axes
+        size = np.linalg.norm(axes, axis=1)
+        rotation = axes / size[:, None]
+        local = rotation @ (point - self.center)
+        q = np.abs(local) - size
         outside = np.linalg.norm(np.maximum(q, 0.0))
         inside = min(float(np.max(q)), 0.0)
         return float(outside + inside)

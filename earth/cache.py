@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import os
+from collections.abc import Sequence
 from pathlib import Path
 
 
@@ -43,12 +44,25 @@ class Cache:
         return path
 
     def clear(self) -> None:
-        """Delete all cached tiles."""
+        """Delete cached tileset, mesh, and texture files."""
 
-        if not self.path.is_dir():
-            return
+        remove_files(self.path, suffixes=('.json', '.glb', '.jpg'))
 
-        for path in self.path.iterdir():
-            if path.is_file():
-                with contextlib.suppress(PermissionError):
-                    path.unlink(missing_ok=True)
+    def clear_metadata(self) -> None:
+        """Delete cached tileset metadata, leaving geometry intact."""
+
+        remove_files(self.path, suffixes=('.json',))
+
+
+def remove_files(directory: os.PathLike | str, suffixes: Sequence[str] = ()) -> None:
+    """Remove files from a directory."""
+
+    directory = Path(directory)
+
+    if not directory.is_dir():
+        return
+
+    for path in directory.rglob('*'):
+        if path.is_file() and suffixes and path.suffix.lower() in suffixes:
+            with contextlib.suppress(PermissionError):
+                path.unlink(missing_ok=True)

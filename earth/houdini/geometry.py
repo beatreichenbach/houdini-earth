@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 
 Progress = Callable[[float, str], None]
 
+NAME_ATTR = 'name'
+TEXTURE_ATTR = 'texture'
+UV_ATTR = 'uv'
+
 
 def build_chunk(
     geo: hou.Geometry,
@@ -26,6 +30,7 @@ def build_chunk(
     uvs: list[np.ndarray] = []
     faces: list[list[int]] = []
     textures: list[str] = []
+    names: list[str] = []
     offset = 0
 
     # Collect attributes
@@ -36,6 +41,7 @@ def build_chunk(
             uvs.append(primitive.uvs[primitive.faces])
             faces.extend((primitive.faces + offset).tolist())
             textures.extend([primitive.texture] * len(primitive.faces))
+            names.extend([chunk.name] * len(primitive.faces))
 
             count = primitive.points.shape[0]
             offset += count
@@ -49,17 +55,21 @@ def build_chunk(
 
     # Create geometry
     uvs_2d = np.concatenate(uvs, axis=0).reshape(-1, 2)
-    uvs_3d = np.insert(uvs_2d, 2, 0.0, axis=1)
+    uvs_3d = np.column_stack((uvs_2d, np.zeros(len(uvs_2d))))
     uv_values = uvs_3d.flatten().tolist()
 
     geo.createPoints(np.concatenate(points).tolist())
     geo.createPolygons(faces)
 
-    geo.addAttrib(hou.attribType.Vertex, 'uv', (0.0, 0.0, 0.0))
+    geo.addAttrib(hou.attribType.Vertex, UV_ATTR, (0.0, 0.0, 0.0))
     geo.setVertexFloatAttribValues('uv', uv_values)
 
-    geo.addAttrib(hou.attribType.Prim, 'texture', '')
-    geo.setPrimStringAttribValues('texture', textures)
+    geo.addAttrib(hou.attribType.Prim, TEXTURE_ATTR, '')
+    geo.setPrimStringAttribValues(TEXTURE_ATTR, textures)
+
+    if any(names):
+        geo.addAttrib(hou.attribType.Prim, NAME_ATTR, '')
+        geo.setPrimStringAttribValues(NAME_ATTR, names)
 
     logger.debug(
         'Built %d point(s) and %d polygon(s) from %d chunk(s)',

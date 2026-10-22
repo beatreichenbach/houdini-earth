@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from collections.abc import Callable
@@ -22,6 +23,17 @@ ROOT_URI = '/v1/3dtiles/root.json'
 Progress = Callable[[float, str], None]
 
 
+def tile_key(tile: Tile) -> str:
+    """Return a stable identifier for a tile."""
+
+    if tile.content_uri is not None:
+        key = tile.content_uri.split('?', 1)[0]
+    else:
+        box = tile.bounding_volume.box if tile.bounding_volume is not None else ()
+        key = repr((tile.geometric_error, box))
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
 @dataclass
 class TileSelection:
     """A downloaded mesh candidate."""
@@ -29,6 +41,7 @@ class TileSelection:
     uri: str
     error: float
     blend: float
+    tile_id: str | None = None
 
 
 @dataclass
@@ -37,6 +50,7 @@ class TileResult:
 
     mesh: str
     error: float
+    tile_id: str | None = None
 
 
 @dataclass
@@ -81,7 +95,7 @@ class TileLoader:
                     return cached_root
 
             logger.debug('Cached root tileset is stale, refetching')
-            self.cache.clear()
+            self.cache.clear_metadata()
 
         # Fresh root
         logger.debug('Fetching root tileset')
@@ -98,13 +112,15 @@ class TileLoader:
     def collect(
         self,
         region: Region,
-        min_error: float,
-        max_error: float,
-        max_meshes: int,
+        min_error: float = 2.0,
+        max_error: float = 60000,
+        max_meshes: int = 10000,
+        pack_error: float = 0.0,
         refine: Refine = Refine.REPLACE,
     ) -> TileManifest:
         """Return the selected tiles, nearest first, downloaded up to max_meshes."""
 
+        self.warnings = []
         root = self.root()
         initial_refine = Refine(root['refine']) if root.get('refine') else refine
 
@@ -116,6 +132,7 @@ class TileLoader:
             region,
             min_error,
             max_error,
+            pack_error,
             selections,
         )
         selections.sort(key=lambda s: s.blend)
@@ -131,7 +148,11 @@ class TileLoader:
             if self._download(url) is None:
                 continue
 
-            tile = TileResult(mesh=str(self.cache.file(url)), error=selection.error)
+            tile = TileResult(
+                mesh=str(self.cache.file(url)),
+                error=selection.error,
+                tile_id=selection.tile_id,
+            )
             manifest.tiles.append(tile)
             if self.progress is not None:
                 progress = (index + 1) / total
@@ -172,7 +193,9 @@ class TileLoader:
         region: Region,
         min_error: float,
         max_error: float,
+        pack_error: float,
         selections: list[TileSelection],
+        tile_id: str | None = None,
     ) -> None:
         """Collect the mesh tiles below a node that fall within the region."""
 
@@ -188,6 +211,9 @@ class TileLoader:
         if blend < 0:
             return
 
+        if tile_id is None and pack_error > 0 and tile.geometric_error <= pack_error:
+            tile_id = tile_key(tile)
+
         active_refine = tile.refine or refine
         desired = min_error + blend * (max_error - min_error)
         selected = desired > tile.geometric_error or not tile.children
@@ -197,19 +223,31 @@ class TileLoader:
             if tile.is_external_tileset:
                 data = self._download(self._content_url(tile.content_uri))
                 if data is not None:
-                    external = json.loads(data)
+                    external_root = json.loads(data)
+                    external_tile = parse_tile(external_root['root'])
                     self._download_tile(
-                        parse_tile(external['root']),
+                        external_tile,
                         active_refine,
                         region,
                         min_error,
                         max_error,
+                        pack_error,
                         selections,
+                        tile_id,
                     )
+
             else:
-                selections.append(
-                    TileSelection(tile.content_uri, tile.geometric_error, blend)
+                selected_tile_id = tile_id
+                if selected_tile_id is None and pack_error > 0:
+                    selected_tile_id = tile_key(tile)
+
+                selection = TileSelection(
+                    tile.content_uri,
+                    tile.geometric_error,
+                    blend,
+                    selected_tile_id,
                 )
+                selections.append(selection)
 
             if active_refine == Refine.REPLACE:
                 return
@@ -217,7 +255,14 @@ class TileLoader:
         # Descend into children
         for child in tile.children:
             self._download_tile(
-                child, active_refine, region, min_error, max_error, selections
+                child,
+                active_refine,
+                region,
+                min_error,
+                max_error,
+                pack_error,
+                selections,
+                tile_id,
             )
 
     def _download(self, url: str) -> bytes | None:
@@ -235,7 +280,8 @@ class TileLoader:
             response = self._session.get(url, timeout=self.timeout)
             response.raise_for_status()
         except requests.RequestException as error:
-            self.warnings.append(f'Request error for {url}: {error}')
+            path = urlsplit(url).path
+            self.warnings.append(f'Request error for {path}: {type(error).__name__}')
             return None
 
         self.cache.write(url, response.content)
