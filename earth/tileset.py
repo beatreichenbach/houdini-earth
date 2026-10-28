@@ -102,7 +102,7 @@ def parse_tile(data: dict[str, Any]) -> Tile:
     return tile
 
 
-def _bounding_volume(data: dict) -> BoundingVolume | None:
+def _bounding_volume(data: dict[str, Any]) -> BoundingVolume | None:
     """Return the Bounding Volume from JSON data."""
 
     volume = data.get('boundingVolume')
@@ -112,6 +112,5 @@ def _bounding_volume(data: dict) -> BoundingVolume | None:
             bounding_volume = BoundingVolume(tuple(float(value) for value in box))
             return bounding_volume
         else:
-            keys = sorted(volume) if isinstance(volume, dict) else volume
-            raise NotImplementedError(f'unsupported bounding volume: {keys}')
+            raise NotImplementedError(f'unsupported bounding volume: {sorted(volume)}')
     return None

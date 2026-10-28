@@ -35,7 +35,6 @@ class Primitive:
 class Chunk:
     """A decoded GLB tile."""
 
-    name: str = ''
     primitives: tuple[Primitive, ...] = ()
     attribute_ids: dict[str, str] = field(default_factory=dict)
 
@@ -50,7 +49,6 @@ def load_chunk(glb_path: str, extract_textures: bool = True) -> Chunk:
     try:
         scene = trimesh.load_scene(glb_path)
 
-        name = os.path.splitext(os.path.basename(glb_path))[0]
         primitives = []
 
         for index, geometry in enumerate(scene.dump()):
@@ -71,7 +69,7 @@ def load_chunk(glb_path: str, extract_textures: bool = True) -> Chunk:
             primitive = Primitive(points=points, faces=faces, uvs=uvs, texture=texture)
             primitives.append(primitive)
 
-        chunk = Chunk(name, tuple(primitives))
+        chunk = Chunk(tuple(primitives))
         return chunk
 
     except _GLB_ERRORS as error:

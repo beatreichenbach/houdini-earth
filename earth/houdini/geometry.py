@@ -28,7 +28,8 @@ def load_chunks(
 ) -> tuple[Chunk, ...]:
     """Load chunks from tiles."""
 
-    warnings = warnings or []
+    if warnings is None:
+        warnings = []
 
     chunks: list[Chunk] = []
     total = len(tiles)
@@ -101,7 +102,7 @@ def build_chunk(
     geo.createPolygons(faces)
 
     geo.addAttrib(hou.attribType.Vertex, UV_ATTR, (0.0, 0.0, 0.0))
-    geo.setVertexFloatAttribValues('uv', uv_values)
+    geo.setVertexFloatAttribValues(UV_ATTR, uv_values)
 
     geo.addAttrib(hou.attribType.Prim, TEXTURE_ATTR, '')
     geo.setPrimStringAttribValues(TEXTURE_ATTR, textures)

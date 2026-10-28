@@ -40,8 +40,6 @@ def build_geometry(
 ) -> None:
     """Build the selected tiles in one download and geometry pass."""
 
-    attributes = [(name, error) for name, error in attributes if name]
-
     node = cast(hou.SopNode, hou.pwd())
 
     geo = node.geometry()
@@ -97,7 +95,7 @@ def build_geometry(
         op.updateLongProgress(0.75)
 
         # Build Meshes
-        with InterruptableOperation('Loading Meshes') as sub_op:
+        with InterruptableOperation('Building Meshes') as sub_op:
             geo.clear()
 
             geometry.build_chunk(geo=geo, chunks=chunks, progress=sub_op.updateProgress)

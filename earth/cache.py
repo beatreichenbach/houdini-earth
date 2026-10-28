@@ -18,10 +18,10 @@ class Cache:
     def file(self, url: str) -> Path:
         """Return the cache path for a tile URL."""
 
-        tile_id = urlsplit(url).path.rsplit('/', 1)[-1]
-        if not tile_id:
+        filename = urlsplit(url).path.rsplit('/', 1)[-1]
+        if not filename:
             raise ValueError(f'url has no filename: {url}')
-        return self.path / tile_id
+        return self.path / filename
 
     def read(self, url: str) -> bytes | None:
         """Return the cached bytes for a URL, or None if not cached."""
@@ -51,7 +51,7 @@ class Cache:
 
 
 def remove_files(directory: os.PathLike | str, suffixes: Sequence[str] = ()) -> None:
-    """Remove files from a directory."""
+    """Remove files from a directory, optionally limited to suffixes."""
 
     directory = Path(directory)
 
@@ -59,6 +59,6 @@ def remove_files(directory: os.PathLike | str, suffixes: Sequence[str] = ()) -> 
         return
 
     for path in directory.rglob('*'):
-        if path.is_file() and suffixes and path.suffix.lower() in suffixes:
+        if path.is_file() and (not suffixes or path.suffix.lower() in suffixes):
             with contextlib.suppress(PermissionError):
                 path.unlink(missing_ok=True)

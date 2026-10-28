@@ -37,7 +37,7 @@ Set up the development package in `build/`:
 ./scripts/build_dev.sh
 ```
 
-Point Houdini at the package by adding `build/` to `HOUDINI_PACKAGE_DIR`:
+Point Houdini at the package by adding `build/` to `HOUDINI_PACKAGE_DIR`.
 
 ## Releasing Changes
 

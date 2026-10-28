@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 Progress = Callable[[float], None]
 
-NAME_ATTR = 'name'
 TEXTURE_ATTR = 'texture'
 UV_SCALE_ATTR = 'uv_scale'
 UV_OFFSET_ATTR = 'uv_offset'
@@ -52,8 +51,6 @@ def build(
         groups[TILE_NAME] = list(range(len(prims)))
 
     # Attributes
-    if not geo.findPrimAttrib(TEXTURE_ATTR):
-        geo.addAttrib(hou.attribType.Prim, TEXTURE_ATTR, '')
     if not geo.findPrimAttrib(UV_SCALE_ATTR):
         geo.addAttrib(hou.attribType.Prim, UV_SCALE_ATTR, (1.0, 1.0))
     if not geo.findPrimAttrib(UV_OFFSET_ATTR):

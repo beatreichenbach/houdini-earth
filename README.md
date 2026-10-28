@@ -14,7 +14,7 @@ It is inspired by the original [EarthMeshHoudini](https://github.com/xjorma/Eart
 
 Earth is installed as a Houdini Package.
 
-1. Go to the [Releases](https://github.com/beatreichenbach/houdini-earth/releases) page and download the latest `earth.zip`.
+1. Go to the [Releases](https://github.com/beatreichenbach/houdini-earth/releases) page and download the latest `earth-v<version>.zip`.
 2. Navigate to your Houdini user preferences folder: `$HOME/houdini‹X›.‹Y›`
 3. If you don't have a folder named `packages` in that directory, create it.
 4. Extract the contents of the `.zip` file into the `packages` folder.
@@ -31,14 +31,11 @@ Earth is installed as a Houdini Package.
 
 ### Google Cloud Account
 
-The node requires a Google Cloud API key with the **Map Tiles API** and **Maps Elevation API** enabled.
+The node requires a Google Cloud API key with the **Map Tiles API** enabled.
 See the [Google Cloud documentation](https://cloud.google.com/gcp) for how to create a project and enable the API.
 
 Test if your key supports the Map Tiles API by trying this link:
 <https://tile.googleapis.com/v1/3dtiles/root.json?key=YOUR_API_KEY>
-
-Test if your key supports the Elevation API by trying this link:
-<https://maps.googleapis.com/maps/api/elevation/json?locations=0%2C0&key=YOUR_API_KEY>
 
 ### Dependencies
 
@@ -56,7 +53,7 @@ Place the **Earth Cache** node in your scene, set the **Google API Key** and the
 - **Falloff**: blend from the region edge to the coarsest level over distance.
 - **Error**: set the level of detail inside the region (`2-60000`).
 - **Extract Textures**: write tile textures next to the cached GLB files.
-- **Attributes**: each attribute stores the tile id of the tile at that geometric error level.
+- **Attributes**: write one primitive attribute per entry, for example `name` at error `10` and `atlas` at `100`. Each stores the tile id of the group at that geometric error level.
 - **Max Meshes**: limit the number of downloaded tiles.
 
 ## Development

@@ -46,7 +46,7 @@ class TileSelection:
 
 @dataclass
 class TileResult:
-    """A downloaded mesh with its geometric error."""
+    """A downloaded mesh with its geometric error and attribute ids."""
 
     mesh: str
     error: float
@@ -71,7 +71,6 @@ class TileLoader:
         timeout: float = 10.0,
         progress: Progress | None = None,
     ) -> None:
-        self.api_key = api_key
         self.cache = cache
         self.timeout = timeout
         self.progress = progress
@@ -119,6 +118,8 @@ class TileLoader:
         refine: Refine = Refine.REPLACE,
     ) -> TileManifest:
         """Return the selected tiles, nearest first, downloaded up to max_meshes."""
+
+        attributes = [(name, error) for name, error in attributes if name]
 
         self.errors = []
         root = self.root()
