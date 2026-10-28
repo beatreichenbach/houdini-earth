@@ -56,7 +56,7 @@ Place the **Earth Cache** node in your scene, set the **Google API Key** and the
 - **Falloff**: blend from the region edge to the coarsest level over distance.
 - **Error**: set the level of detail inside the region (`2-60000`).
 - **Extract Textures**: write tile textures next to the cached GLB files.
-- **Pack**: group geometry by **Pack Error** and add a `tile` primitive attribute.
+- **Attributes**: each attribute stores the tile id of the tile at that geometric error level.
 - **Max Meshes**: limit the number of downloaded tiles.
 
 ## Development

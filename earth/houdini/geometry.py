@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 Progress = Callable[[float], None]
 
-NAME_ATTR = 'name'
 TEXTURE_ATTR = 'texture'
 UV_ATTR = 'uv'
 
@@ -44,8 +43,7 @@ def load_chunks(
             warnings.append(str(error))
             continue
 
-        if tile.tile_id is not None:
-            chunk.name = tile.tile_id
+        chunk.attribute_ids = dict(tile.attribute_ids)
         chunks.append(chunk)
 
         if progress is not None:
@@ -64,7 +62,10 @@ def build_chunk(
     uvs: list[np.ndarray] = []
     faces: list[list[int]] = []
     textures: list[str] = []
-    names: list[str] = []
+    attribute_names = list(
+        dict.fromkeys(name for chunk in chunks for name in chunk.attribute_ids)
+    )
+    attribute_values: dict[str, list[str]] = {name: [] for name in attribute_names}
     offset = 0
 
     # Collect attributes
@@ -75,7 +76,10 @@ def build_chunk(
             uvs.append(primitive.uvs[primitive.faces])
             faces.extend((primitive.faces + offset).tolist())
             textures.extend([primitive.texture] * len(primitive.faces))
-            names.extend([chunk.name] * len(primitive.faces))
+            for name in attribute_names:
+                attribute_values[name].extend(
+                    [chunk.attribute_ids.get(name, '')] * len(primitive.faces)
+                )
 
             count = primitive.points.shape[0]
             offset += count
@@ -102,6 +106,6 @@ def build_chunk(
     geo.addAttrib(hou.attribType.Prim, TEXTURE_ATTR, '')
     geo.setPrimStringAttribValues(TEXTURE_ATTR, textures)
 
-    if any(names):
-        geo.addAttrib(hou.attribType.Prim, NAME_ATTR, '')
-        geo.setPrimStringAttribValues(NAME_ATTR, names)
+    for name, values in attribute_values.items():
+        geo.addAttrib(hou.attribType.Prim, name, '')
+        geo.setPrimStringAttribValues(name, values)

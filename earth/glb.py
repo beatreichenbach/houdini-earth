@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import trimesh
@@ -37,6 +37,7 @@ class Chunk:
 
     name: str = ''
     primitives: tuple[Primitive, ...] = ()
+    attribute_ids: dict[str, str] = field(default_factory=dict)
 
 
 def load_chunk(glb_path: str, extract_textures: bool = True) -> Chunk:

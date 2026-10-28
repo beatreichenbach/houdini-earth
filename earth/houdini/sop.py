@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import AbstractContextManager
 from typing import cast
 
@@ -33,12 +33,14 @@ def build_geometry(
     falloff: float,
     falloff_exponent: float,
     extract_textures: bool,
-    pack_error: float,
+    attributes: Sequence[tuple[str, float]],
     google_api_key: str,
     cachedir: str,
     max_meshes: int,
 ) -> None:
     """Build the selected tiles in one download and geometry pass."""
+
+    attributes = [(name, error) for name, error in attributes if name]
 
     node = cast(hou.SopNode, hou.pwd())
 
@@ -79,7 +81,7 @@ def build_geometry(
                 min_error=min_error,
                 max_error=max_error,
                 max_meshes=max_meshes,
-                pack_error=pack_error,
+                attributes=attributes,
             )
             warnings.extend(manifest.errors)
         op.updateLongProgress(0.5)

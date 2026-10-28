@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -41,7 +41,7 @@ class TileSelection:
     uri: str
     error: float
     blend: float
-    tile_id: str | None = None
+    attribute_ids: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -50,7 +50,7 @@ class TileResult:
 
     mesh: str
     error: float
-    tile_id: str | None = None
+    attribute_ids: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -115,7 +115,7 @@ class TileLoader:
         min_error: float = 2.0,
         max_error: float = 60000,
         max_meshes: int = 10000,
-        pack_error: float = 0.0,
+        attributes: Sequence[tuple[str, float]] = (),
         refine: Refine = Refine.REPLACE,
     ) -> TileManifest:
         """Return the selected tiles, nearest first, downloaded up to max_meshes."""
@@ -132,7 +132,7 @@ class TileLoader:
             region,
             min_error,
             max_error,
-            pack_error,
+            attributes,
             selections,
         )
         selections.sort(key=lambda s: s.blend)
@@ -155,7 +155,7 @@ class TileLoader:
             tile = TileResult(
                 mesh=str(self.cache.file(url)),
                 error=selection.error,
-                tile_id=selection.tile_id,
+                attribute_ids=selection.attribute_ids,
             )
             manifest.tiles.append(tile)
             if self.progress is not None:
@@ -184,9 +184,9 @@ class TileLoader:
         region: Region,
         min_error: float,
         max_error: float,
-        pack_error: float,
+        attributes: Sequence[tuple[str, float]],
         selections: list[TileSelection],
-        tile_id: str | None = None,
+        attribute_ids: tuple[str | None, ...] | None = None,
     ) -> None:
         """Collect the mesh tiles below a node that fall within the region."""
 
@@ -199,8 +199,14 @@ class TileLoader:
         if blend < 0:
             return
 
-        if tile_id is None and pack_error > 0 and tile.geometric_error <= pack_error:
-            tile_id = tile_key(tile)
+        if attribute_ids is None:
+            attribute_ids = (None,) * len(attributes)
+
+        key = tile_key(tile)
+        ids = list(attribute_ids)
+        for index, (_, error) in enumerate(attributes):
+            if ids[index] is None and tile.geometric_error <= error:
+                ids[index] = key
 
         active_refine = tile.refine or refine
         desired = min_error + blend * (max_error - min_error)
@@ -219,21 +225,21 @@ class TileLoader:
                         region,
                         min_error,
                         max_error,
-                        pack_error,
+                        attributes,
                         selections,
-                        tile_id,
+                        tuple(ids),
                     )
 
             else:
-                selected_tile_id = tile_id
-                if selected_tile_id is None and pack_error > 0:
-                    selected_tile_id = tile_key(tile)
+                selected_ids: dict[str, str] = {}
+                for (name, _), group_id in zip(attributes, ids, strict=True):
+                    selected_ids[name] = group_id if group_id is not None else key
 
                 selection = TileSelection(
                     tile.content_uri,
                     tile.geometric_error,
                     blend,
-                    selected_tile_id,
+                    selected_ids,
                 )
                 selections.append(selection)
 
@@ -248,9 +254,9 @@ class TileLoader:
                 region,
                 min_error,
                 max_error,
-                pack_error,
+                attributes,
                 selections,
-                tile_id,
+                tuple(ids),
             )
 
     def _download(self, url: str) -> bytes | None:

@@ -133,7 +133,7 @@ def test_content_url_adds_context_when_missing(tmp_path: Path) -> None:
     assert url == ('https://tile.googleapis.com/v1/3dtiles/files/tile.glb?session=abc')
 
 
-def test_collect_assigns_and_inherits_pack_id(
+def test_collect_assigns_multiple_attribute_levels(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     _install(
@@ -162,53 +162,13 @@ def test_collect_assigns_and_inherits_pack_id(
         min_error=1.0,
         max_error=1000.0,
         max_meshes=10,
-        pack_error=100.0,
+        attributes=[('name', 100.0), ('atlas', 500.0)],
     )
-    pack_ids = [tile.tile_id for tile in manifest.tiles]
-    assert len(pack_ids) == 4
-    assert None not in pack_ids
-    assert len(set(pack_ids)) == 2
-
-
-def test_collect_falls_back_to_tile_id_without_pack_root(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    _install(
-        monkeypatch,
-        _root(
-            _leaf(0.0, 10.0, '/a.glb?session=abc'),
-            _leaf(0.0, 20.0, '/b.glb?session=abc'),
-        ),
-    )
-    loader = TileLoader('key', Cache(tmp_path))
-    region = RadialRegion(np.array([0.0, 0.0, 0.0]), radius=1000.0, falloff=1000.0)
-    manifest = loader.collect(
-        region,
-        min_error=1.0,
-        max_error=1000.0,
-        max_meshes=10,
-        pack_error=1.0,
-    )
-    pack_ids = [tile.tile_id for tile in manifest.tiles]
-    assert len(pack_ids) == 2
-    assert None not in pack_ids
-    assert len(set(pack_ids)) == 2
-
-
-def test_collect_zero_pack_error_disables_pack_id(
-    tmp_path: Path, monkeypatch: MonkeyPatch
-) -> None:
-    _install(monkeypatch, _root(_leaf(0.0, 10.0, '/tile.glb?session=abc')))
-    loader = TileLoader('key', Cache(tmp_path))
-    region = RadialRegion(np.array([0.0, 0.0, 0.0]), radius=1000.0, falloff=1000.0)
-    manifest = loader.collect(
-        region,
-        min_error=1.0,
-        max_error=1000.0,
-        max_meshes=10,
-        pack_error=0.0,
-    )
-    assert manifest.tiles[0].tile_id is None
+    attribute_ids = [tile.attribute_ids for tile in manifest.tiles]
+    assert len(attribute_ids) == 4
+    assert all(set(ids) == {'name', 'atlas'} for ids in attribute_ids)
+    assert len({ids['name'] for ids in attribute_ids}) == 2
+    assert len({ids['atlas'] for ids in attribute_ids}) == 1
 
 
 def test_download_warning_omits_api_key(
