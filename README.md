@@ -50,18 +50,10 @@ Both are bundled in the release for **Linux** and **Windows**, so no extra setup
 
 ## Usage
 
-Place the **Earth Mesh** node in your scene, set the **Google API Key** and the **Coordinates** of the area you want to capture.
+Place the **Earth Cache** node in your scene, set the **Google API Key** and the **Coordinates** of the area you want to capture.
 
-**Shape** selects the region that is built:
-- **Circle**: full detail within a circle with diameter **Size X**.
-- **Rectangle**: full detail within **Size X** x **Size Y**, aligned to the east/sog the east/south axes. Posituth axes.
-
-- **Center**: offset the region from **Coordinates** in meters along the east/south axes.
-
-**Falloff**: blend from the region edge to the coarsest level over distance.
-
-Other parameters:
-
+- **Shape**: select the region that selects tiles around coordinates.
+- **Falloff**: blend from the region edge to the coarsest level over distance.
 - **Error**: set the level of detail inside the region (`2-60000`).
 - **Extract Textures**: write tile textures next to the cached GLB files.
 - **Pack**: group geometry by **Pack Error** and add a `tile` primitive attribute.
