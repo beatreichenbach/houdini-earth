@@ -2,6 +2,20 @@
 
 <!-- version list -->
 
+## v0.2.3 (2026-10-27)
+
+### Bug Fixes
+
+- Nested interruptable operations, bounding box state, cleanup
+  ([`1b50547`](https://github.com/beatreichenbach/houdini-earth/commit/1b505474b4d88e38a666676f70f0e127398d4a3a))
+
+- Parallelize uv remap, cache hda
+  ([`5640e59`](https://github.com/beatreichenbach/houdini-earth/commit/5640e5914e74f11d966b3e21db93915a9c575f86))
+
+- Remove old hdas
+  ([`1f2662c`](https://github.com/beatreichenbach/houdini-earth/commit/1f2662c6a47977153c262fbbba61089742bf7192))
+
+
 ## v0.2.2 (2026-10-22)
 
 ### Bug Fixes
