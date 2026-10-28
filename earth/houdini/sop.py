@@ -111,6 +111,8 @@ def build_geometry(
 
 
 def build_atlas(
+    use_attribute: bool,
+    attribute: str,
     resolution: int,
     padding: int,
     directory: str,
@@ -128,10 +130,12 @@ def build_atlas(
     with InterruptableOperation('Building atlas', open_interrupt_dialog=True) as op:
         atlas.build(
             geo,
-            resolution,
-            padding,
-            directory,
-            extension,
+            use_attribute=use_attribute,
+            attribute=attribute,
+            resolution=resolution,
+            padding=padding,
+            directory=directory,
+            extension=extension,
             progress=op.updateProgress,
         )
 

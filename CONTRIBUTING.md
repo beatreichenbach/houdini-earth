@@ -23,9 +23,9 @@ uv run pytest
 
 Houdini already ships some of the dependencies, so they are not bundled in the release and do not need to be installed:
 
-- `requests` — tile downloads
-- `numpy` — geometry and tile math
-- `pillow` — texture handling in `trimesh`
+- `requests` (tile downloads)
+- `numpy` (geometry and tile math)
+- `pillow` (texture handling in `trimesh`)
 
 See the [Houdini third-party libraries](https://www.sidefx.com/docs/houdini/licenses/) page for the full list.
 

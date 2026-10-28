@@ -11,9 +11,9 @@ license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 keywords = ["houdini", "3d-tiles", "google-maps", "geometry", "glb"]
 dependencies = [
-    "dracopy",
-    "requests",
-    "trimesh",
+    "dracopy>=2.0,<3",
+    "requests>=2.31,<3",
+    "trimesh>=5.2,<6",
 ]
 
 [project.urls]

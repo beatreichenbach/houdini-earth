@@ -7,7 +7,6 @@ import os
 from collections.abc import Callable, Sequence
 
 import hou
-import numpy as np
 from PIL import Image
 
 from .. import atlas as atlas_module
@@ -19,10 +18,15 @@ Progress = Callable[[float], None]
 
 NAME_ATTR = 'name'
 TEXTURE_ATTR = 'texture'
+UV_SCALE_ATTR = 'uv_scale'
+UV_OFFSET_ATTR = 'uv_offset'
+TILE_NAME = 'tile'
 
 
 def build(
     geo: hou.Geometry,
+    use_attribute: bool,
+    attribute: str,
     resolution: int,
     padding: int,
     directory: str,
@@ -34,83 +38,77 @@ def build(
     if geo.findPrimAttrib(TEXTURE_ATTR) is None:
         raise hou.NodeError(f'geometry has no {TEXTURE_ATTR} attribute')
 
-    prims = list(geo.prims())
+    prims = geo.prims()
     textures = [str(prim.attribValue(TEXTURE_ATTR)) for prim in prims]
 
-    if prims and geo.findPrimAttrib(NAME_ATTR) is not None:
-        tile = str(prims[0].attribValue(NAME_ATTR))
+    groups: dict[str, list[int]] = {}
+    if use_attribute and geo.findPrimAttrib(attribute) is not None:
+        for index, prim in enumerate(prims):
+            tile = str(prim.attribValue(attribute))
+            if not tile:
+                tile = TILE_NAME
+            groups.setdefault(tile, []).append(index)
     else:
-        tile = 'tile'
-
-    # Pack textures
-    if progress is not None:
-        progress(0)
-    sizes = _sizes(textures)
-
-    try:
-        pages = atlas_module.plan_pages(sizes, resolution, padding)
-    except atlas_module.AtlasError as error:
-        raise hou.NodeError(str(error)) from error
-
-    # Writing atlases
-    placements: dict[str, tuple[Placement, AtlasPage]] = {}
-    paths: dict[str, str] = {}
-    os.makedirs(directory, exist_ok=True)
-    total = max(1, len(pages))
-    for index, page in enumerate(pages):
-        name = _atlas_id(tile, page.index)
-        path = os.path.join(directory, f'{name}.{extension}')
-        _write_page(page, path, extension)
-        for placement in page.placements:
-            placements[placement.texture] = (placement, page)
-            paths[placement.texture] = path
-
-        if progress is not None:
-            progress((index + 1) / total)
-
-    # Remap uvs
-    if progress is not None:
-        progress(0)
-
-    uv_attrib = geo.findVertexAttrib('uv')
-    if uv_attrib:
-        values = np.asarray(geo.vertexFloatAttribValues('uv'), dtype=np.float64)
-        values = values.reshape(-1, uv_attrib.size())
-        result = values.copy()
-        total = len(prims)
-        for index, (prim, texture) in enumerate(zip(prims, textures, strict=True)):
-            found = placements.get(texture)
-            if found is None:
-                continue
-
-            placement, page = found
-            indices = [vertex.linearNumber() for vertex in prim.vertices()]
-            remapped = atlas_module.remap_uv(
-                values[indices, :2], placement, page.width, page.height
-            )
-            result[indices, 0] = remapped[:, 0]
-            result[indices, 1] = remapped[:, 1]
-
-            if progress is not None:
-                progress((index + 1) / total)
-
-        geo.setVertexFloatAttribValues('uv', result.reshape(-1).tolist())
+        groups[TILE_NAME] = list(range(len(prims)))
 
     # Attributes
     if not geo.findPrimAttrib(TEXTURE_ATTR):
         geo.addAttrib(hou.attribType.Prim, TEXTURE_ATTR, '')
-    for prim, texture in zip(prims, textures, strict=True):
-        prim.setAttribValue(TEXTURE_ATTR, paths.get(texture, ''))
+    if not geo.findPrimAttrib(UV_SCALE_ATTR):
+        geo.addAttrib(hou.attribType.Prim, UV_SCALE_ATTR, (1.0, 1.0))
+    if not geo.findPrimAttrib(UV_OFFSET_ATTR):
+        geo.addAttrib(hou.attribType.Prim, UV_OFFSET_ATTR, (0.0, 0.0))
 
-    if not geo.findPrimAttrib(NAME_ATTR):
-        geo.addAttrib(hou.attribType.Prim, NAME_ATTR, '')
-    for prim, texture in zip(prims, textures, strict=True):
-        found = placements.get(texture)
-        page = found[1] if found is not None else None
-        name = _atlas_id(tile, page.index) if page is not None else ''
-        prim.setAttribValue(NAME_ATTR, name)
+    os.makedirs(directory, exist_ok=True)
+    total_groups = max(1, len(groups))
+    group_percentage = 0
+    group_delta = 1.0 / total_groups
+    for group_index, (tile, indices) in enumerate(groups.items()):
+        # Plan pages
+        group_textures = [textures[index] for index in indices]
+        sizes = _sizes(group_textures)
+        try:
+            pages = atlas_module.plan_pages(sizes, resolution, padding)
+        except atlas_module.AtlasError as error:
+            raise hou.NodeError(str(error)) from error
 
-    logger.debug('Packed %d texture(s) into %d atlas page(s)', len(sizes), len(pages))
+        # Write pages
+        placements: dict[str, tuple[Placement, AtlasPage]] = {}
+        paths: dict[str, str] = {}
+        total = max(1, len(pages))
+        for page_index, page in enumerate(pages):
+            file_name = f'{tile}_{page.index}.{extension}'
+            path = os.path.join(directory, file_name)
+            _write_page(page, path, extension)
+            for placement in page.placements:
+                placements[placement.texture] = (placement, page)
+                paths[placement.texture] = path
+
+            if progress is not None:
+                page_percentage = (page_index + 1) / total
+                percentage = group_percentage + group_delta * page_percentage
+                progress(percentage)
+
+        # Plan remapping
+        for index in indices:
+            prim = prims[index]
+            texture = textures[index]
+            found = placements.get(texture)
+            if found is None:
+                prim.setAttribValue(TEXTURE_ATTR, '')
+                prim.setAttribValue(UV_SCALE_ATTR, (1.0, 1.0))
+                prim.setAttribValue(UV_OFFSET_ATTR, (0.0, 0.0))
+                continue
+
+            placement, page = found
+            transform = atlas_module.remap_transform(placement, page.width, page.height)
+            prim.setAttribValue(TEXTURE_ATTR, paths[texture])
+            prim.setAttribValue(UV_SCALE_ATTR, transform.scale)
+            prim.setAttribValue(UV_OFFSET_ATTR, transform.offset)
+
+        group_percentage = (group_index + 1) / total_groups
+        if progress is not None:
+            progress(group_percentage)
 
 
 def _sizes(textures: Sequence[str]) -> dict[str, tuple[int, int]]:
@@ -143,9 +141,3 @@ def _write_page(page: AtlasPage, path: str, extension: str) -> None:
         atlas.save(path, quality=95)
     else:
         atlas.save(path)
-
-
-def _atlas_id(tile: str, index: int) -> str:
-    """Return the identifier used for this tile's index."""
-
-    return f'{tile}_{index}'

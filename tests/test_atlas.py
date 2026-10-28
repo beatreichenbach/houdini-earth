@@ -1,7 +1,6 @@
-import numpy as np
 import pytest
 
-from earth.atlas import AtlasError, Placement, plan_pages, remap_uv
+from earth.atlas import AtlasError, Placement, plan_pages, remap_transform
 
 
 def test_plan_pages_trims_to_used_size() -> None:
@@ -36,10 +35,35 @@ def test_plan_pages_raises_for_oversized_texture() -> None:
         plan_pages({'big.png': (2048, 256)}, 1024, padding=0)
 
 
-def test_remap_uv_uses_page_dimensions() -> None:
+def test_remap_transform_uses_page_dimensions() -> None:
     placement = Placement('a.png', x=0, y=0, width=256, height=256)
-    uv = np.array([[0.0, 0.0], [1.0, 1.0]])
 
-    remapped = remap_uv(uv, placement, 512, 256)
+    transform = remap_transform(placement, 512, 256)
 
-    assert np.allclose(remapped, [[0.0, 0.0], [0.5, 1.0]])
+    assert transform.scale == (0.5, 1.0)
+    assert transform.offset == (0.0, 0.0)
+
+
+def test_remap_transform_accounts_for_placement_offset() -> None:
+    placement = Placement('a.png', x=0, y=100, width=100, height=100)
+
+    transform = remap_transform(placement, 256, 256)
+
+    assert transform.scale == (100 / 256, 100 / 256)
+    assert transform.offset == (0.0, 56 / 256)
+
+
+def test_plan_pages_packs_at_pixel_resolution() -> None:
+    pages = plan_pages({'a.png': (257, 257), 'b.png': (257, 257)}, 1000, padding=0)
+
+    assert len(pages) == 1
+    assert pages[0].placements[1].x == 257
+    assert pages[0].width == 514
+
+
+def test_plan_pages_allows_texture_just_under_resolution() -> None:
+    pages = plan_pages({'big.png': (900, 900)}, 1000, padding=0)
+
+    assert len(pages) == 1
+    assert pages[0].width == 900
+    assert pages[0].height == 900
