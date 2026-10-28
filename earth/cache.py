@@ -3,21 +3,14 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import os
 from collections.abc import Sequence
 from pathlib import Path
-
-
-def hash_filename(filename: str) -> str:
-    """Return a sha256-hashed filename, keeping the original extension."""
-
-    name, ext = os.path.splitext(filename)
-    return hashlib.sha256(name.encode()).hexdigest() + ext
+from urllib.parse import urlsplit
 
 
 class Cache:
-    """Store downloaded tiles on disk under hashed filenames."""
+    """Store downloaded tiles on disk under their URL filenames."""
 
     def __init__(self, path: str | os.PathLike[str]) -> None:
         self.path = Path(path)
@@ -25,7 +18,10 @@ class Cache:
     def file(self, url: str) -> Path:
         """Return the cache path for a tile URL."""
 
-        return self.path / hash_filename(url.split('?')[0].split('/')[-1])
+        tile_id = urlsplit(url).path.rsplit('/', 1)[-1]
+        if not tile_id:
+            raise ValueError(f'url has no filename: {url}')
+        return self.path / tile_id
 
     def read(self, url: str) -> bytes | None:
         """Return the cached bytes for a URL, or None if not cached."""

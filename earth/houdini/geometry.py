@@ -3,26 +3,60 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable, Sequence
 
 import hou
 import numpy as np
 
-from ..glb import Chunk
+from ..glb import Chunk, GlbError, load_chunk
+from ..tiles import TileResult
 
 logger = logging.getLogger(__name__)
 
-Progress = Callable[[float, str], None]
+Progress = Callable[[float], None]
 
 NAME_ATTR = 'name'
 TEXTURE_ATTR = 'texture'
 UV_ATTR = 'uv'
 
 
-def build_chunk(
-    geo: hou.Geometry,
-    chunks: Sequence[Chunk],
+def load_chunks(
+    tiles: Sequence[TileResult],
+    extract_textures: bool,
     progress: Progress | None = None,
+    warnings: list[str] | None = None,
+) -> tuple[Chunk, ...]:
+    """Load chunks from tiles."""
+
+    warnings = warnings or []
+
+    chunks: list[Chunk] = []
+    total = len(tiles)
+    for index, tile in enumerate(tiles):
+        if not os.path.isfile(tile.mesh):
+            warnings.append(f'File not found: {tile.mesh}')
+            continue
+
+        try:
+            chunk = load_chunk(tile.mesh, extract_textures=extract_textures)
+        except GlbError as error:
+            warnings.append(str(error))
+            continue
+
+        if tile.tile_id is not None:
+            chunk.name = tile.tile_id
+        chunks.append(chunk)
+
+        if progress is not None:
+            percentage = (index + 1) / max(total, 1)
+            progress(percentage)
+
+    return tuple(chunks)
+
+
+def build_chunk(
+    geo: hou.Geometry, chunks: Sequence[Chunk], progress: Progress | None = None
 ) -> None:
     """Create points, polygons and attributes for the decoded chunks."""
 
@@ -47,7 +81,8 @@ def build_chunk(
             offset += count
 
         if progress is not None:
-            progress((index + 1) / total, f'Building mesh {index + 1}/{total}')
+            percentage = (index + 1) / max(total, 1)
+            progress(percentage)
 
     if not points:
         logger.debug('No primitives to build')
@@ -70,10 +105,3 @@ def build_chunk(
     if any(names):
         geo.addAttrib(hou.attribType.Prim, NAME_ATTR, '')
         geo.setPrimStringAttribValues(NAME_ATTR, names)
-
-    logger.debug(
-        'Built %d point(s) and %d polygon(s) from %d chunk(s)',
-        offset,
-        len(faces),
-        len(chunks),
-    )

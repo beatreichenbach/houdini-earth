@@ -123,16 +123,14 @@ def test_content_url_keeps_existing_session(tmp_path: Path) -> None:
     url = loader._content_url('/v1/3dtiles/files/tile.json?session=abc')
     assert url.count('?') == 1
     assert url.count('session=') == 1
-    assert 'key=api-key' in url
+    assert 'session=abc' in url
 
 
 def test_content_url_adds_context_when_missing(tmp_path: Path) -> None:
     loader = TileLoader('api-key', Cache(tmp_path))
     loader.context = 'session=abc'
     url = loader._content_url('/v1/3dtiles/files/tile.glb')
-    assert url == (
-        'https://tile.googleapis.com/v1/3dtiles/files/tile.glb?session=abc&key=api-key'
-    )
+    assert url == ('https://tile.googleapis.com/v1/3dtiles/files/tile.glb?session=abc')
 
 
 def test_collect_assigns_and_inherits_pack_id(
@@ -222,8 +220,8 @@ def test_download_warning_omits_api_key(
     monkeypatch.setattr(tiles_module.requests.Session, 'get', get)
     loader = TileLoader('secret-key', Cache(tmp_path))
     loader._download('https://tile.googleapis.com/tile.glb?key=secret-key')
-    assert loader.warnings
-    assert 'secret-key' not in loader.warnings[0]
+    assert loader.errors
+    assert 'secret-key' not in loader.errors[0]
 
 
 def test_tile_key_ignores_session() -> None:

@@ -11,6 +11,7 @@ class State:
 
     def onEnter(self, kwargs: dict[str, object]) -> None:
         node = cast(hou.SopNode, kwargs['node'])
+
         parm = node.parm('guide')
         if parm is not None:
             self.guide = bool(parm.eval())
@@ -18,6 +19,7 @@ class State:
 
     def onExit(self, kwargs: dict[str, object]) -> None:
         node = cast(hou.SopNode, kwargs['node'])
+
         parm = node.parm('guide')
         if parm is not None:
             parm.set(self.guide)
@@ -32,5 +34,13 @@ def createViewerStateTemplate() -> hou.ViewerStateTemplate:
     template = hou.ViewerStateTemplate(state_typename, state_label, state_category)
     template.bindFactory(State)
     template.bindIcon(state_icon)
+
+    bindings = [
+        ('centerx', 'centerx'),
+        ('centery', 'centerz'),
+        ('sizex', 'sizex'),
+        ('sizey', 'sizez'),
+    ]
+    template.bindHandleStatic('boundingrect', 'shape', bindings)  # ty: ignore[invalid-argument-type]
 
     return template

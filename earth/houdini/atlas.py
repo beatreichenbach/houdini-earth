@@ -15,7 +15,7 @@ from ..atlas import AtlasPage, Placement
 
 logger = logging.getLogger(__name__)
 
-Progress = Callable[[float, str], None]
+Progress = Callable[[float], None]
 
 NAME_ATTR = 'name'
 TEXTURE_ATTR = 'texture'
@@ -44,7 +44,7 @@ def build(
 
     # Pack textures
     if progress is not None:
-        progress(0, 'Packing textures ...')
+        progress(0)
     sizes = _sizes(textures)
 
     try:
@@ -66,11 +66,11 @@ def build(
             paths[placement.texture] = path
 
         if progress is not None:
-            progress((index + 1) / total, f'Writing atlas {index + 1}/{total}')
+            progress((index + 1) / total)
 
     # Remap uvs
     if progress is not None:
-        progress(0, 'Remapping uvs ...')
+        progress(0)
 
     uv_attrib = geo.findVertexAttrib('uv')
     if uv_attrib:
@@ -92,7 +92,7 @@ def build(
             result[indices, 1] = remapped[:, 1]
 
             if progress is not None:
-                progress((index + 1) / total, f'Remapping uvs {index + 1}/{total}')
+                progress((index + 1) / total)
 
         geo.setVertexFloatAttribValues('uv', result.reshape(-1).tolist())
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
+from urllib.parse import urlsplit
 
 import numpy as np
 
@@ -71,7 +72,7 @@ class Tile:
 
         if self.content_uri is None:
             return False
-        return self.content_uri.split('?')[0].endswith('.json')
+        return urlsplit(self.content_uri).path.endswith('.json')
 
 
 def parse_tile(data: dict[str, Any]) -> Tile:
@@ -112,5 +113,5 @@ def _bounding_volume(data: dict) -> BoundingVolume | None:
             return bounding_volume
         else:
             keys = sorted(volume) if isinstance(volume, dict) else volume
-            raise NotImplementedError(f'Unsupported bounding volume: {keys}')
+            raise NotImplementedError(f'unsupported bounding volume: {keys}')
     return None

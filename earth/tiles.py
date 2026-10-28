@@ -7,7 +7,7 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import requests
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 TILE_URL = 'https://tile.googleapis.com'
 ROOT_URI = '/v1/3dtiles/root.json'
 
-Progress = Callable[[float, str], None]
+Progress = Callable[[float], None]
 
 
 def tile_key(tile: Tile) -> str:
@@ -58,7 +58,7 @@ class TileManifest:
     """The tiles produced by a selection."""
 
     tiles: list[TileResult] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
 
 class TileLoader:
@@ -68,7 +68,7 @@ class TileLoader:
         self,
         api_key: str,
         cache: Cache,
-        timeout: float = 30.0,
+        timeout: float = 10.0,
         progress: Progress | None = None,
     ) -> None:
         self.api_key = api_key
@@ -76,8 +76,9 @@ class TileLoader:
         self.timeout = timeout
         self.progress = progress
         self.context = ''
-        self.warnings: list[str] = []
+        self.errors: list[str] = []
         self._session = requests.Session()
+        self._session.headers['X-Goog-Api-Key'] = api_key
 
     def root(self) -> dict:
         """Return the root tileset JSON, using the cache when possible."""
@@ -86,27 +87,26 @@ class TileLoader:
         root_file = self.cache.path / 'root.json'
         if root_file.is_file():
             cached_root = json.loads(root_file.read_text())
-            context = self._extract_context(cached_root['root'])
-            if context:
-                uri = self._find_key(cached_root['root'], 'uri').split('?')[0]
-                if self._request_ok(self._content_url(uri, context)):
-                    logger.debug('Reusing cached root tileset (context %s)', context)
-                    self.context = context
+            uri = TileLoader._find_key(cached_root['root'], 'uri')
+            if uri:
+                self.context = urlsplit(uri).query
+                if self._request_ok(self._content_url(uri)):
                     return cached_root
 
-            logger.debug('Cached root tileset is stale, refetching')
+            logger.debug('Cached root tileset is stale, redownloading')
             self.cache.clear_metadata()
 
         # Fresh root
-        logger.debug('Fetching root tileset')
-        data = self._download(f'{TILE_URL}{ROOT_URI}?key={self.api_key}')
+        data = self._download(self._content_url(ROOT_URI))
         if data is None:
-            raise RuntimeError('could not fetch the 3D Tiles root')
+            raise RuntimeError('could not download the 3D Tiles root')
 
         root = json.loads(data)
         root_file.parent.mkdir(parents=True, exist_ok=True)
         root_file.write_bytes(data)
-        self.context = self._extract_context(root['root'])
+
+        uri = TileLoader._find_key(root['root'], 'uri')
+        self.context = urlsplit(uri).query
         return root
 
     def collect(
@@ -120,7 +120,7 @@ class TileLoader:
     ) -> TileManifest:
         """Return the selected tiles, nearest first, downloaded up to max_meshes."""
 
-        self.warnings = []
+        self.errors = []
         root = self.root()
         initial_refine = Refine(root['refine']) if root.get('refine') else refine
 
@@ -136,13 +136,17 @@ class TileLoader:
             selections,
         )
         selections.sort(key=lambda s: s.blend)
-        if max_meshes > 0:
+        total = len(selections)
+        logger.debug('Selected %d tile(s)', total)
+
+        # Limit tiles
+        if 0 < max_meshes < total:
+            self.errors.append(f'Number of selected meshes exceeds limit: {total}')
+            total = max_meshes
             selections = selections[:max_meshes]
-        logger.debug('Selected %d tile(s)', len(selections))
 
         # Download meshes
         manifest = TileManifest()
-        total = len(selections)
         for index, selection in enumerate(selections):
             url = self._content_url(selection.uri)
             if self._download(url) is None:
@@ -156,35 +160,22 @@ class TileLoader:
             manifest.tiles.append(tile)
             if self.progress is not None:
                 progress = (index + 1) / total
-                self.progress(progress, f'Downloading mesh {index + 1}/{total}')
+                self.progress(progress)
 
-        logger.debug('Downloaded %d of %d tile(s)', len(manifest.tiles), total)
-        manifest.warnings = list(self.warnings)
+        logger.debug('Downloaded %d tiles', total)
+        manifest.errors = list(self.errors)
         return manifest
 
-    def clear(self) -> None:
-        """Delete all cached tiles."""
-
-        self.cache.clear()
-
-    def _content_url(self, uri: str, context: str | None = None) -> str:
+    def _content_url(self, uri: str) -> str:
         """Return the absolute URL for a tileset content URI."""
 
-        context = self.context if context is None else context
-        parts = urlsplit(f'{TILE_URL}{uri}')
-        params = dict(parse_qsl(parts.query))
-        for name, value in parse_qsl(context):
+        url = f'{TILE_URL}{uri}'
+        result = urlsplit(url)
+        params = dict(parse_qsl(result.query))
+        for name, value in parse_qsl(self.context):
             params.setdefault(name, value)
-        params['key'] = self.api_key
-        components = (
-            parts.scheme,
-            parts.netloc,
-            parts.path,
-            urlencode(params),
-            parts.fragment,
-        )
-        url = urlunsplit(components)
-        return url
+        content_url = result._replace(query=urlencode(params)).geturl()
+        return content_url
 
     def _download_tile(
         self,
@@ -201,10 +192,7 @@ class TileLoader:
 
         # Prune tiles without a bounding volume
         if tile.bounding_volume is None:
-            logger.warning(
-                'Pruning tile without a bounding volume: %s',
-                tile.content_uri or '<no content>',
-            )
+            logger.debug('Pruning tile without a bounding volume: %s', tile.content_uri)
             return
 
         blend = region.evaluate(tile.bounding_volume)
@@ -268,27 +256,30 @@ class TileLoader:
     def _download(self, url: str) -> bytes | None:
         """Return the bytes for a URL, reading and writing the cache."""
 
-        data = self.cache.read(url)
+        try:
+            data = self.cache.read(url)
+        except ValueError:
+            return None
         if data is not None:
             return data
 
         if self.progress is not None:
             # Poll for interruption without showing progress.
-            self.progress(-1.0, 'Fetching tiles')
+            self.progress(-1.0)
 
         try:
             response = self._session.get(url, timeout=self.timeout)
             response.raise_for_status()
         except requests.RequestException as error:
             path = urlsplit(url).path
-            self.warnings.append(f'Request error for {path}: {type(error).__name__}')
+            self.errors.append(f'Request error for {path}: {type(error).__name__}')
             return None
 
         self.cache.write(url, response.content)
         return response.content
 
     def _request_ok(self, url: str) -> bool:
-        """Return whether a URL can be fetched successfully."""
+        """Return whether a URL can be downloaded successfully."""
 
         try:
             response = self._session.get(url, timeout=self.timeout)
@@ -310,12 +301,3 @@ class TileLoader:
             if found:
                 return found
         return ''
-
-    @staticmethod
-    def _extract_context(node: dict) -> str:
-        """Return the session context embedded in a tileset's content URIs."""
-
-        uri = TileLoader._find_key(node, 'uri')
-        if not uri or '?' not in uri:
-            return ''
-        return uri.split('?')[-1]
