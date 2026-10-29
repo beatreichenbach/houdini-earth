@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -73,6 +74,17 @@ class Tile:
         if self.content_uri is None:
             return False
         return urlsplit(self.content_uri).path.endswith('.json')
+
+    def id(self) -> str:
+        """Return a stable identifier, preferring the tile geometry."""
+
+        if self.bounding_volume is not None:
+            key = repr((self.geometric_error, self.bounding_volume.box))
+        elif self.content_uri is not None:
+            key = self.content_uri.split('?', 1)[0]
+        else:
+            key = ''
+        return hashlib.sha256(key.encode()).hexdigest()
 
 
 def parse_tile(data: dict[str, Any]) -> Tile:

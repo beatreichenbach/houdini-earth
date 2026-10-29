@@ -7,8 +7,8 @@ from pytest import MonkeyPatch
 from earth import tiles as tiles_module
 from earth.cache import Cache
 from earth.region import RadialRegion
-from earth.tiles import TileLoader, tile_key
-from earth.tileset import Tile
+from earth.tiles import TileLoader
+from earth.tileset import BoundingVolume, Tile
 
 
 class MockResponse:
@@ -184,10 +184,22 @@ def test_download_warning_omits_api_key(
     assert 'secret-key' not in loader.errors[0]
 
 
-def test_tile_key_ignores_session() -> None:
-    first = Tile(geometric_error=10.0, content_uri='/tile.glb?session=first')
-    second = Tile(geometric_error=10.0, content_uri='/tile.glb?session=second')
-    assert tile_key(first) == tile_key(second)
-    assert tile_key(first) != tile_key(
-        Tile(geometric_error=10.0, content_uri='/other.glb')
+def test_tile_id_is_stable() -> None:
+    box = BoundingVolume((0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0))
+    first = Tile(
+        geometric_error=10.0,
+        bounding_volume=box,
+        content_uri='/tile.glb?session=first',
     )
+    second = Tile(
+        geometric_error=10.0,
+        bounding_volume=box,
+        content_uri='/other.glb?session=second',
+    )
+    assert first.id() == second.id()
+    assert first.id() != Tile(geometric_error=20.0, bounding_volume=box).id()
+
+    first_uri = Tile(geometric_error=10.0, content_uri='/tile.glb?session=first')
+    second_uri = Tile(geometric_error=10.0, content_uri='/tile.glb?session=second')
+    assert first_uri.id() == second_uri.id()
+    assert first_uri.id() != Tile(geometric_error=10.0, content_uri='/other.glb').id()

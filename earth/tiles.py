@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from collections.abc import Callable, Sequence
@@ -21,17 +20,6 @@ TILE_URL = 'https://tile.googleapis.com'
 ROOT_URI = '/v1/3dtiles/root.json'
 
 Progress = Callable[[float], None]
-
-
-def tile_key(tile: Tile) -> str:
-    """Return a stable identifier for a tile."""
-
-    if tile.content_uri is not None:
-        key = tile.content_uri.split('?', 1)[0]
-    else:
-        box = tile.bounding_volume.box if tile.bounding_volume is not None else ()
-        key = repr((tile.geometric_error, box))
-    return hashlib.sha256(key.encode()).hexdigest()
 
 
 @dataclass
@@ -203,11 +191,11 @@ class TileLoader:
         if attribute_ids is None:
             attribute_ids = (None,) * len(attributes)
 
-        key = tile_key(tile)
+        tile_id = tile.id()
         ids = list(attribute_ids)
         for index, (_, error) in enumerate(attributes):
             if ids[index] is None and tile.geometric_error <= error:
-                ids[index] = key
+                ids[index] = tile_id
 
         active_refine = tile.refine or refine
         desired = min_error + blend * (max_error - min_error)
@@ -234,7 +222,7 @@ class TileLoader:
             else:
                 selected_ids: dict[str, str] = {}
                 for (name, _), group_id in zip(attributes, ids, strict=True):
-                    selected_ids[name] = group_id if group_id is not None else key
+                    selected_ids[name] = group_id if group_id is not None else tile_id
 
                 selection = TileSelection(
                     tile.content_uri,
