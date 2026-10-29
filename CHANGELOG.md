@@ -2,6 +2,28 @@
 
 <!-- version list -->
 
+## v0.2.4 (2026-10-28)
+
+### Bug Fixes
+
+- Add dynamic attributes
+  ([`7527301`](https://github.com/beatreichenbach/houdini-earth/commit/7527301feac1662c0d9daa5a7d7987b4f5a8b85c))
+
+- Cleanup
+  ([`35fb838`](https://github.com/beatreichenbach/houdini-earth/commit/35fb83885cfd4db6c3e39835259c5d2cd0eb19fd))
+
+- Linked parms
+  ([`1778721`](https://github.com/beatreichenbach/houdini-earth/commit/1778721ed9e2fc3bbc10d279aa571ece75c14ffa))
+
+- Make tile_id stable
+  ([`2a354ae`](https://github.com/beatreichenbach/houdini-earth/commit/2a354ae8d68ca055334004397fe443668be4ec21))
+
+### Documentation
+
+- Update parameters
+  ([`eb2855b`](https://github.com/beatreichenbach/houdini-earth/commit/eb2855bb0ca1149089e18b38ba399647ee0a5674))
+
+
 ## v0.2.3 (2026-10-27)
 
 ### Bug Fixes
